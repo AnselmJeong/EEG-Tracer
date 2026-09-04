@@ -47,6 +47,7 @@ writeFileSync(join(consumerRoot, 'index.html'), '<div id="root"></div><script ty
 writeFileSync(join(consumerRoot, 'src/main.tsx'), `
 import { createRoot } from 'react-dom/client'
 import { TraceViewer, createArrayTraceSource } from '@neurosignal/trace-viewer'
+import { checkTraceDataSource } from '@neurosignal/trace-viewer/testing'
 import '@neurosignal/trace-viewer/styles.css'
 
 const source = createArrayTraceSource({
@@ -57,6 +58,7 @@ const source = createArrayTraceSource({
   capabilities: { canMarkBadChannels: true },
 })
 const root = document.getElementById('root')
+void checkTraceDataSource(source, [])
 if (!root) throw new Error('Missing root')
 createRoot(root).render(
   <TraceViewer

@@ -18,3 +18,6 @@
 - Bad-channel review controls appear only when read-only mode is disabled and every visible source
   advertises the capability. The current bad state remains textual and does not change on intent alone.
 - Forced-colors and reduced-motion modes are covered by package CSS.
+- Annotation editing uses native disclosure, select, input, and form/button controls. It is gated by
+  read-only mode plus source capabilities; requests are announced without changing source metadata.
+- Pending navigation retains the previous trace coordinates and marks the stage `aria-busy`.

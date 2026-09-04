@@ -1,11 +1,53 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { TraceViewer } from '../src/components/TraceViewer'
 import { createArrayTraceSource } from '../src/data-source/createArrayTraceSource'
 import type { TraceChannel } from '../src/model/channel'
+import type { TraceWindowRequest } from '../src/model/trace-data'
 
 const channels = ['Fp1', 'Fp2', 'C3'].map((label): TraceChannel => ({ id: label, label, type: 'eeg', unit: 'µV', bad: false }))
+
+it('suspends hidden-tab prefetch and retains old trace coordinates until new data arrives', async () => {
+  const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+  try {
+    const original = contextSource('slow')
+    let release: () => void = () => { throw new Error('No pending request') }
+    const getWindow = vi.fn(async (request: TraceWindowRequest, signal?: AbortSignal) => {
+      if (request.startTimeS === 2) await new Promise<void>((resolve) => { release = resolve })
+      return original.getWindow(request, signal)
+    })
+    const { container } = render(<TraceViewer ariaLabel="Slow EEG" defaultViewport={{ durationS: 2 }}
+      layers={[{ id: 'slow', label: 'Source', source: { ...original, getWindow } }]} renderer="svg" />)
+    const plot = await screen.findByRole('img', { name: 'Slow EEG' })
+    await act(() => new Promise((resolve) => setTimeout(resolve, 240)))
+    expect(getWindow).toHaveBeenCalledTimes(1)
+    const oldPath = plot.querySelector('[data-layer]')?.getAttribute('d')
+    fireEvent.change(screen.getByRole('slider', { name: 'Time position' }), { target: { value: '2' } })
+    expect(container.querySelector('.nsv-stage')).toHaveAttribute('aria-busy', 'true')
+    expect(plot.querySelector('[data-layer]')?.getAttribute('d')).toBe(oldPath)
+    await act(async () => { release(); await Promise.resolve() })
+    await waitFor(() => expect(container.querySelector('.nsv-stage')).toHaveAttribute('aria-busy', 'false'))
+    expect(plot.querySelector('[data-layer]')?.getAttribute('d')).not.toBe(oldPath)
+  } finally { visibility.mockRestore() }
+})
+
+it('reuses an adjacent prefetched viewport and does not refetch for gain', async () => {
+  const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  try {
+    const original = contextSource('prefetch')
+    const getWindow = vi.fn((request: TraceWindowRequest, signal?: AbortSignal) => original.getWindow(request, signal))
+    render(<TraceViewer ariaLabel="Prefetched EEG" defaultViewport={{ durationS: 2, visibleChannelCount: 2 }}
+      layers={[{ id: 'prefetch', label: 'Source', source: { ...original, getWindow } }]} renderer="svg" />)
+    await screen.findByRole('img', { name: 'Prefetched EEG' })
+    await waitFor(() => expect(getWindow.mock.calls.some(([request]) => request.startTimeS === 2)).toBe(true))
+    fireEvent.change(screen.getByRole('slider', { name: 'Time position' }), { target: { value: '2' } })
+    await waitFor(() => expect(screen.getByRole('slider', { name: 'Time position' })).toHaveValue('2'))
+    fireEvent.click(screen.getByRole('button', { name: 'Increase amplitude gain' }))
+    expect(getWindow.mock.calls.filter(([request]) => request.startTimeS === 2)).toHaveLength(1)
+    expect(getWindow.mock.calls.every(([request]) => request.channelIds.length === 2)).toBe(true)
+  } finally { visibility.mockRestore() }
+})
 
 function source(id: string, multiplier = 1, unit = 'µV') {
   return createArrayTraceSource({

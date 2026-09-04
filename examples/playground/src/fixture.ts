@@ -49,7 +49,7 @@ export function makeLayers(): readonly TraceLayer[] {
       { id: 'movement', label: 'Movement contamination', startTimeS: 5.15, durationS: 0.22, kind: 'bad-segment' as const },
       { id: 'recording-end', label: 'Review continues past end', startTimeS: 11.7, durationS: 0.45, kind: 'annotation' as const },
     ],
-    capabilities: { canMarkBadChannels: true },
+    capabilities: { canMarkBadChannels: true, canEditAnnotations: true },
   }
 
   return [

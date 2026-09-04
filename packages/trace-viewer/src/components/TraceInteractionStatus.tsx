@@ -4,6 +4,9 @@ import type { TraceViewerInteractionState } from '../state/trace-viewer-reducer'
 function formatCursorValue(layers: readonly LoadedTraceLayer[], state: TraceViewerInteractionState): string {
   const cursor = state.cursor
   if (cursor === null || cursor.channelId === undefined) return 'Cursor —'
+  if (cursor.timeS < state.viewport.startTimeS || cursor.timeS >= state.viewport.startTimeS + state.viewport.durationS) {
+    return `${cursor.channelId} · ${cursor.timeS.toFixed(3)} s · outside visible window`
+  }
   const channel = layers[0]?.metadata.channels.find(({ id }) => id === cursor.channelId)
   const series = layers[0]?.window.channels.get(cursor.channelId)
   if (channel === undefined || series === undefined) return `${cursor.channelId} · ${cursor.timeS.toFixed(3)} s`
@@ -21,7 +24,7 @@ function formatCursorValue(layers: readonly LoadedTraceLayer[], state: TraceView
     }
     const value = series.values[nearestIndex]
     return Number.isFinite(value)
-      ? `${channel.label} · ${cursor.timeS.toFixed(3)} s · ${value?.toFixed(2)} ${channel.unit}`
+      ? `${channel.label} · ${cursor.timeS.toFixed(3)} s · ${value !== undefined && value !== 0 && Math.abs(value) < 0.01 ? value.toExponential(2) : value?.toFixed(2)} ${channel.unit}`
       : `${channel.label} · ${cursor.timeS.toFixed(3)} s · unavailable`
   }
   return `${channel.label} · ${cursor.timeS.toFixed(3)} s · envelope view`

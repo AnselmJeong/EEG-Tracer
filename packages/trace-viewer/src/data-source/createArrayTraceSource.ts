@@ -61,7 +61,7 @@ function createEnvelopeSeries(
   pixelWidth: number,
 ): TraceSeries {
   const sampleCount = end - start
-  const bucketCount = Math.max(1, Math.min(Math.floor(pixelWidth), sampleCount))
+  const bucketCount = Math.max(0, Math.min(Math.floor(pixelWidth), sampleCount))
   const bucketStartTimesS = new Float64Array(bucketCount)
   const minimum = new Float32Array(bucketCount)
   const maximum = new Float32Array(bucketCount)
@@ -75,7 +75,7 @@ function createEnvelopeSeries(
 
     for (let index = bucketStart; index < Math.max(bucketStart + 1, bucketEnd); index += 1) {
       const value = values[index]
-      if (value === undefined || Number.isNaN(value)) continue
+      if (value === undefined || !Number.isFinite(value)) continue
       min = Math.min(min, value)
       max = Math.max(max, value)
     }
@@ -193,9 +193,12 @@ export function createArrayTraceSource(options: ArrayTraceSourceOptions): TraceD
         if (!Number.isFinite(request.startTimeS) || !Number.isFinite(request.durationS) || request.durationS <= 0) {
           throw new Error('Trace window duration must be positive and finite.')
         }
+        if (!Number.isInteger(request.pixelWidth) || request.pixelWidth < 1) throw new Error('pixelWidth must be a positive integer.')
+        if (new Set(request.channelIds).size !== request.channelIds.length) throw new Error('Requested channel IDs must be unique.')
 
         const requestStart = Math.max(firstTime, request.startTimeS)
         const requestEnd = Math.min(firstTime + durationS, request.startTimeS + request.durationS)
+        if (requestStart >= requestEnd) throw new Error('Requested time window is outside the recording.')
         const start = Math.min(timesS.length, lowerBound(timesS, requestStart))
         const end = Math.max(start, Math.min(timesS.length, lowerBound(timesS, requestEnd)))
         const channelsWindow = new Map<string, TraceSeries>()

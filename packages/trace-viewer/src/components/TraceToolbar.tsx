@@ -11,7 +11,8 @@ function scaleLabels(layers: readonly LoadedTraceLayer[], state: TraceViewerInte
   const maximumByTypeAndUnit = new Map<string, { maximum: number; type: TraceChannelType; unit: string }>()
   const metadata = layers[0]?.metadata
   if (metadata === undefined) return []
-  for (const channel of metadata.channels) {
+  const maximumByUnit = new Map<string, number>()
+  for (const channel of metadata.channels.slice(state.viewport.channelOffset, state.viewport.channelOffset + state.viewport.visibleChannelCount)) {
     const key = `${channel.type}\u0000${channel.unit}`
     const entry = maximumByTypeAndUnit.get(key) ?? { maximum: 0, type: channel.type, unit: channel.unit }
     for (const loaded of layers) {
@@ -19,10 +20,11 @@ function scaleLabels(layers: readonly LoadedTraceLayer[], state: TraceViewerInte
       if (series !== undefined) forEachFiniteValue(series, (value) => { entry.maximum = Math.max(entry.maximum, Math.abs(value)) })
     }
     maximumByTypeAndUnit.set(key, entry)
+    maximumByUnit.set(channel.unit, Math.max(maximumByUnit.get(channel.unit) ?? 0, entry.maximum))
   }
-  return [...maximumByTypeAndUnit].map(([, { maximum, type, unit }]) => {
+  return [...maximumByTypeAndUnit].map(([, { type, unit }]) => {
     const gain = state.viewport.gainByType[type] ?? 1
-    return `${type.toUpperCase()} ±${formatScale(niceAmplitude(maximum) / gain)} ${unit} · ${gain}×`
+    return `${type.toUpperCase()} ±${formatScale(niceAmplitude(maximumByUnit.get(unit) ?? 0) / gain)} ${unit} · ${gain}×`
   })
 }
 

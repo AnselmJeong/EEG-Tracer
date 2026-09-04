@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 
 import { annotationKind } from '../annotations/annotation-layout'
 import type { TraceSeries } from '../model/trace-data'
@@ -11,7 +11,7 @@ import {
 } from './TraceRenderer'
 import type { TraceRendererProps, TraceRenderModel } from './TraceRenderer'
 
-function drawSeries(
+export function drawSeries(
   context: CanvasRenderingContext2D,
   series: TraceSeries,
   channelIndex: number,
@@ -53,7 +53,7 @@ function drawSeries(
   context.stroke()
 }
 
-export function CanvasTraceRenderer(props: TraceRendererProps) {
+export const CanvasTraceRenderer = memo(function CanvasTraceRenderer(props: TraceRendererProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const model = useMemo(() => createRenderModel(props), [props])
 
@@ -153,4 +153,4 @@ export function CanvasTraceRenderer(props: TraceRendererProps) {
       </div>
     </div>
   )
-}
+})

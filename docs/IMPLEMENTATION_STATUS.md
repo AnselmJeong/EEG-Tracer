@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-09-04
+Updated: 2026-09-05 · package 0.4.0
 
 ## Complete
 
@@ -22,13 +22,35 @@ Updated: 2026-09-04
 - Explicit included-channel sets and capability/read-only-gated bad-channel intent controls
 - Semantic annotation details and color-independent kind labels for both renderers
 
-## Deliberately deferred
+- Phase 4 per-layer foreground/background request coordination with abort and stale-response rejection
+- Viewer-local revision/representation-aware LRU: 64 MiB retained-buffer accounting and 24 entries
+- Settled-navigation adjacent prefetch; cancellation on navigation, unmount, or tab hiding
+- Public `@neurosignal/trace-viewer/testing` acceptance harness and response validator
+- Lazy one-hour/128-channel playground with visible-channel-only DOM and requests
+- 64/128-channel Canvas benchmark, cache ceiling, peak oracle, race, and renderer mapping checks
+- Capability-gated annotation creation, rename, and deletion requests with native keyboard controls
+- Phase 5 sibling Testbed working-copy FIF metadata/window endpoints and typed HTTP adapter
+- Imported-file browser review panel, refresh recovery, SI unit display, and original/working-copy hash checks
+- MNE point/envelope oracle, chunked reads, revision conflicts, API, adapter, and import-to-viewer browser checks
 
-- Phase 4 annotation editing intents and request coordination
-- Phase 4 request coordination, bounded cache, prefetch, channel virtualization, and benchmark gates
-- Phase 5 real-data trace-window endpoint and Testbed application migration
+## Next phase
 
-The existing Neurosignal-Testbed working tree was not modified because its ICA viewer and related
-files contain uncommitted work. The root README contains the direct adapter recipe for its current
-`x`, `series`, and `channel_names` response contract. Application migration remains independently
-reversible as required by the repository plan.
+- Phase 6 grouping, richer overview/time formats, butterfly display, and stable-release API/accessibility review
+- Simulation ICA component migration remains separately reversible and has not been bundled into the
+  real-data integration; the existing Testbed ICA implementation is retained.
+
+Phase 5 code lives in `../Neurosignal-Testbed`. Its worktree was clean when this session began.
+See [REAL_DATA_INTEGRATION.md](REAL_DATA_INTEGRATION.md) for transport limits, test commands, and rollback.
+
+## Verified handoff (2026-09-05)
+
+- Viewer: 32 unit/component tests; 5 Chromium interaction/benchmark tests
+- Testbed: 13 web tests; 16 selected API/real-data/FIF oracle tests
+- Real import → Canvas review → channel/time navigation browser workflow using temporary FIF data
+- Original, working-copy, and manifest SHA-256 preservation in oracle tests; original/working-copy
+  SHA-256 preservation through browser navigation
+- Both TypeScript builds, package lint, Python changed-file Ruff checks, package dry-run,
+  isolated React 19 tarball consumer build, and both repositories' `git diff --check`
+- Testbed uses the portable 0.4.0 tarball with a single deduplicated React runtime
+
+No registry publication or remote push was performed. Changes are present in both local worktrees.

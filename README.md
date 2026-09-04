@@ -4,9 +4,9 @@ A backend-neutral React/TypeScript EEG trace viewer for NeuroSignal and other ne
 It renders only the requested viewport, keeps source data immutable, preserves `NaN` gaps, and
 supports locked-scale multi-layer comparisons through one component API.
 
-This repository currently implements the Phase 0–3 package boundary from
+This repository implements Phases 0–4 and the Phase 5 Testbed integration from
 [`TRACE_VIEWER_REPOSITORY_PLAN.md`](TRACE_VIEWER_REPOSITORY_PLAN.md). The package is private-first
-and remains `0.x` until its long-recording phases are validated.
+and remains `0.x` while the Phase 6 release/API review is pending.
 
 ## Install from a local tarball
 
@@ -16,9 +16,13 @@ npm run build
 npm pack --workspace @neurosignal/trace-viewer
 ```
 
-Then install the emitted `neurosignal-trace-viewer-0.3.0.tgz` in a React consumer.
+Then install the emitted `neurosignal-trace-viewer-0.4.0.tgz` in a React consumer.
 
 ## NeuroSignal simulation adapter
+
+For long-recording and imported FIF use, see [Phase 5 integration](docs/REAL_DATA_INTEGRATION.md).
+The playground's **Open 128-channel recording** link exercises one-hour, viewport-only loading.
+Performance evidence is recorded in [PERFORMANCE.md](docs/PERFORMANCE.md).
 
 The current Neurosignal-Testbed response can be used without changing its API shape:
 

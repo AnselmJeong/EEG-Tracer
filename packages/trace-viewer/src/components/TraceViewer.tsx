@@ -2,9 +2,12 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { SemanticTraceSummary } from '../accessibility/semantic-summary'
 import { adjacentAnnotation, visibleAnnotations } from '../annotations/annotation-layout'
+import { RequestCoordinator } from '../data-source/request-coordinator'
+import { ViewportCache } from '../data-source/viewport-cache'
 import { TraceInteractionOverlay } from '../interactions/TraceInteractionOverlay'
 import type { TraceAnnotation, TraceAnnotationKind, TraceMetadata, TraceWindow } from '../model/trace-data'
 import type { TraceViewerProps, TraceLayer } from '../model/viewer'
+import type { TraceViewport } from '../model/viewport'
 import { CanvasTraceRenderer } from '../renderers/CanvasTraceRenderer'
 import { SvgTraceRenderer } from '../renderers/SvgTraceRenderer'
 import { createRenderModel } from '../renderers/TraceRenderer'
@@ -13,6 +16,7 @@ import { constraintsFromMetadata } from '../state/invariants'
 import { useTraceViewer } from '../state/useTraceViewer'
 import type { TraceViewerAction, TraceViewerInteractionState } from '../state/trace-viewer-reducer'
 import { AnnotationLane } from './AnnotationLane'
+import { AnnotationReview } from './AnnotationReview'
 import { ChannelNavigator } from './ChannelNavigator'
 import { RecordingOverview } from './RecordingOverview'
 import { TraceInteractionStatus } from './TraceInteractionStatus'
@@ -29,7 +33,7 @@ type MetadataState =
 type WindowState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; layers: readonly LoadedTraceLayer[] }
+  | { status: 'ready'; layers: readonly LoadedTraceLayer[]; viewport: TraceViewport }
 
 function useElementSize() {
   const ref = useRef<HTMLDivElement>(null)
@@ -208,6 +212,11 @@ function TraceViewerReady({
   const controller = useTraceViewer(displayMetadata, props)
   const { ref: stageRef, size } = useElementSize()
   const [windowState, setWindowState] = useState<WindowState>({ status: 'loading' })
+  const cache = useMemo(() => new ViewportCache(), [])
+  const coordinators = useMemo(() => visibleLayers.map(({ source }) => ({
+    foreground: new RequestCoordinator(source, cache),
+    background: new RequestCoordinator(source, cache),
+  })), [cache, visibleLayers])
   const [announcement, setAnnouncement] = useState('')
   const [visibleAnnotationKinds, setVisibleAnnotationKinds] = useState<Record<TraceAnnotationKind, boolean>>({
     annotation: true,
@@ -219,10 +228,22 @@ function TraceViewerReady({
   const channelIds = useMemo(() => displayMetadata.channels
     .slice(viewport.channelOffset, viewport.channelOffset + viewport.visibleChannelCount)
     .map(({ id }) => id), [displayMetadata.channels, viewport.channelOffset, viewport.visibleChannelCount])
+  const requestViewport = useMemo(() => ({
+    startTimeS: viewport.startTimeS,
+    durationS: viewport.durationS,
+    channelOffset: viewport.channelOffset,
+    visibleChannelCount: viewport.visibleChannelCount,
+    gainByType: {},
+  }), [viewport.startTimeS, viewport.durationS, viewport.channelOffset, viewport.visibleChannelCount])
 
   useEffect(() => {
     const abortController = new AbortController()
     let current = true
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const stopPrefetch = () => {
+      if (document.hidden) coordinators.forEach(({ background }) => background.cancel())
+    }
+    document.addEventListener('visibilitychange', stopPrefetch)
     setWindowState((currentState) => currentState.status === 'ready' ? currentState : { status: 'loading' })
 
     async function load(): Promise<void> {
@@ -230,10 +251,10 @@ function TraceViewerReady({
         const windows = await Promise.all(visibleLayers.map((layer, index) => {
           const layerMetadata = displayMetadataLayers[index]
           if (layerMetadata === undefined) throw new Error(`Metadata is unavailable for layer ${layer.id}.`)
-          return layer.source.getWindow({
+          return coordinators[index]!.foreground.request({
             sourceRevision: layerMetadata.revision,
-            startTimeS: viewport.startTimeS,
-            durationS: viewport.durationS,
+            startTimeS: requestViewport.startTimeS,
+            durationS: requestViewport.durationS,
             channelIds,
             pixelWidth: Math.max(1, size.width),
             preferredRepresentation: 'auto',
@@ -246,7 +267,28 @@ function TraceViewerReady({
           validateWindow(metadata, window)
           return { layer, metadata, window }
         })
-        if (current) setWindowState({ status: 'ready', layers: loaded })
+        if (current) {
+          setWindowState({ status: 'ready', layers: loaded, viewport: requestViewport })
+          // Delay speculative work until navigation settles. One adjacent window at a time.
+          idleTimer = setTimeout(() => {
+            void (async () => {
+              for (const direction of [1, -1]) {
+                if (!current || document.hidden) return
+                const startTimeS = requestViewport.startTimeS + direction * requestViewport.durationS
+                if (startTimeS < metadataLayers[0]!.startTimeS
+                  || startTimeS + requestViewport.durationS > metadataLayers[0]!.startTimeS + metadataLayers[0]!.durationS) continue
+                await Promise.all(coordinators.map(({ background }, index) => background.request({
+                  sourceRevision: displayMetadataLayers[index]!.revision,
+                  startTimeS,
+                  durationS: requestViewport.durationS,
+                  channelIds,
+                  pixelWidth: Math.max(1, size.width),
+                  preferredRepresentation: 'auto',
+                }, abortController.signal)))
+              }
+            })().catch(() => { /* Speculative failures never replace the foreground viewport. */ })
+          }, 180)
+        }
       } catch (error: unknown) {
         if (current && !(error instanceof DOMException && error.name === 'AbortError')) {
           setWindowState({ status: 'error', message: errorMessage(error) })
@@ -258,10 +300,23 @@ function TraceViewerReady({
     return () => {
       current = false
       abortController.abort()
+      clearTimeout(idleTimer)
+      coordinators.forEach(({ foreground, background }) => { foreground.cancel(); background.cancel() })
+      document.removeEventListener('visibilitychange', stopPrefetch)
     }
-  }, [channelIds, displayMetadataLayers, size.width, viewport.durationS, viewport.startTimeS, visibleLayers])
+  }, [channelIds, displayMetadataLayers, size.width, requestViewport, visibleLayers, coordinators, metadataLayers])
 
   const renderer = props.renderer ?? 'canvas'
+  const windowPending = windowState.status === 'ready' && (
+    windowState.viewport.startTimeS !== viewport.startTimeS
+    || windowState.viewport.durationS !== viewport.durationS
+    || windowState.viewport.channelOffset !== viewport.channelOffset
+    || windowState.viewport.visibleChannelCount !== viewport.visibleChannelCount
+  )
+  const renderedViewport = useMemo(() => windowState.status === 'ready'
+    ? { ...windowState.viewport, gainByType: viewport.gainByType }
+    : viewport, [viewport, windowState])
+  const renderedState = { ...controller.state, viewport: renderedViewport }
   const readOnly = props.readOnly ?? true
   const intentEnabled = !readOnly
     && props.onBadChannelIntent !== undefined
@@ -307,7 +362,13 @@ function TraceViewerReady({
           visibleAnnotationKinds={visibleAnnotationKinds}
         />
       ) : null}
-      <div className="nsv-stage" ref={stageRef}>
+      {interactive && !readOnly && props.onAnnotationIntent !== undefined
+        && metadataLayers.every(({ capabilities }) => capabilities.canEditAnnotations) ? (
+          <AnnotationReview annotations={canonical.annotations} cursor={controller.state.cursor}
+            selection={controller.state.selection} onIntent={props.onAnnotationIntent} announce={setAnnouncement} />
+        ) : null}
+      <div aria-busy={windowPending || windowState.status === 'loading'} className="nsv-stage" ref={stageRef}>
+        {windowPending ? <span className="nsv-sr-only" role="status">Loading requested viewport; showing previous window.</span> : null}
         {windowState.status === 'loading' ? <TraceStatus kind="loading" message="Loading signal viewport…" /> : null}
         {windowState.status === 'error' ? <TraceStatus kind="error" message={windowState.message} /> : null}
         {windowState.status === 'ready' ? (
@@ -323,15 +384,15 @@ function TraceViewerReady({
             overviewAnnotations={overviewAnnotations}
             readOnly={readOnly}
             renderer={renderer}
-            state={controller.state}
+            state={renderedState}
             width={size.width}
           />
         ) : null}
       </div>
       {windowState.status === 'ready' ? (
         <>
-          {interactive ? <TraceInteractionStatus helpId={helpId} layers={displayWindowLayers} state={controller.state} /> : null}
-          <SemanticTraceSummary layers={displayWindowLayers} viewport={controller.state.viewport} />
+          {interactive ? <TraceInteractionStatus helpId={helpId} layers={displayWindowLayers} state={renderedState} /> : null}
+          <SemanticTraceSummary layers={displayWindowLayers} viewport={renderedState.viewport} />
         </>
       ) : null}
       <div aria-atomic="true" aria-live="polite" className="nsv-sr-only">{announcement}</div>

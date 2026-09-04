@@ -1,6 +1,6 @@
 {
   "name": "neurosignal-trace-viewer-workspace",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -14,7 +14,8 @@
     "test": "npm run test --workspaces --if-present",
     "test:browser": "playwright test",
     "check:pack": "node scripts/check-package.mjs",
-    "check:consumer": "node scripts/check-consumer.mjs"
+    "check:consumer": "node scripts/check-consumer.mjs",
+    "check:real-data": "node scripts/check-real-data.mjs"
   },
   "engines": {
     "node": ">=22.12"

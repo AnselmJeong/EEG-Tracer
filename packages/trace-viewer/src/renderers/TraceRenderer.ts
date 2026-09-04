@@ -123,6 +123,7 @@ export function valueToY(value: number, channel: TraceChannel, rowIndex: number,
 }
 
 export function formatScale(amplitude: number): string {
+  if (amplitude > 0 && amplitude < 0.01) return amplitude.toExponential(1)
   return amplitude < 10 ? amplitude.toFixed(1) : amplitude.toFixed(0)
 }
 

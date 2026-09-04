@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-09-05
+
+- Completed Phase 4 cancellable viewport coordination, 64 MiB/24-entry LRU, idle adjacent prefetch,
+  visibility cancellation, public `/testing` adapter harness, and 64/128-channel browser benchmarks.
+- Kept previous-window coordinates during loading and memoized Canvas redraws across cursor changes.
+- Added capability-gated annotation create/rename/delete intent controls.
+- Corrected shared-unit scale readouts and sub-millivolt cursor/scale formatting for SI-valued data.
+- Added the Phase 5 Testbed adapter, working-copy-only FIF endpoints, and real browser import checks
+  in the sibling Neurosignal-Testbed repository. No runtime MNE or HTTP dependency enters the package.
+
 ## 0.3.0 — 2026-09-04
 
 - Added stacked annotation lanes, point-event markers, bad-segment patterns, and display filters.

@@ -452,3 +452,12 @@ button.nsv-annotation-chip { cursor: pointer; }
   .nsv-selection,
   .nsv-channel-highlight.is-selected { border: 2px solid Highlight; background: transparent; }
 }
+
+.nsv-viewer:has(> .nsv-annotation-review) { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.nsv-annotation-review { padding: 8px 16px; border-bottom: 1px solid var(--nsv-line); font-size: 12px; }
+.nsv-annotation-review summary { cursor: pointer; }
+.nsv-annotation-review form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 10px; }
+.nsv-annotation-review input,
+.nsv-annotation-review select,
+.nsv-annotation-review button { font: inherit; color: var(--nsv-text); background: var(--nsv-field); border: 1px solid var(--nsv-line); padding: 6px 8px; max-width: 100%; }
+.nsv-annotation-review button:disabled { opacity: .5; }

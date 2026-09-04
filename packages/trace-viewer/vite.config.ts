@@ -7,9 +7,9 @@ export default defineConfig({
   plugins: [react()],
   build: {
     lib: {
-      entry: resolve(import.meta.dirname, 'src/index.ts'),
+      entry: { index: resolve(import.meta.dirname, 'src/index.ts'), testing: resolve(import.meta.dirname, 'src/testing/index.ts') },
       formats: ['es'],
-      fileName: 'index',
+      fileName: (_format, entryName) => `${entryName}.js`,
       cssFileName: 'trace-viewer',
     },
     rolldownOptions: {
