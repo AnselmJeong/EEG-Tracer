@@ -1,0 +1,28 @@
+.nsv-viewer {
+  --nsv-surface: #f6f7f3;
+  --nsv-field: #edf1ef;
+  --nsv-text: #26332d;
+  --nsv-muted: #69756f;
+  --nsv-line: #d3dad6;
+  --nsv-line-strong: #b8c3bd;
+  --nsv-trace-color: #286d6d;
+  --nsv-accent: #087f83;
+  --nsv-alert: #a95038;
+  --nsv-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --nsv-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --nsv-trace-width: 1.35px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .nsv-viewer {
+    --nsv-surface: #151a18;
+    --nsv-field: #1d2522;
+    --nsv-text: #e5ece8;
+    --nsv-muted: #9da9a3;
+    --nsv-line: #34403b;
+    --nsv-line-strong: #4d5d56;
+    --nsv-trace-color: #74c5bf;
+    --nsv-accent: #67c9c2;
+    --nsv-alert: #e29372;
+  }
+}
