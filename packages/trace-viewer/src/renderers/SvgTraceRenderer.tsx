@@ -1,5 +1,6 @@
 import { useId, useMemo } from 'react'
 
+import { annotationKind } from '../annotations/annotation-layout'
 import type { TraceSeries } from '../model/trace-data'
 import {
   createRenderModel,
@@ -71,14 +72,18 @@ export function SvgTraceRenderer(props: TraceRendererProps) {
       {model.layers[0]?.window.annotations.map((annotation) => {
         const start = Math.max(model.viewport.startTimeS, annotation.startTimeS)
         const end = Math.min(model.viewport.startTimeS + model.viewport.durationS, annotation.startTimeS + annotation.durationS)
-        if (end <= start) return null
+        const kind = annotationKind(annotation)
+        if (kind !== 'event' && end < start) return null
+        if (kind === 'event' && (annotation.startTimeS < model.viewport.startTimeS
+          || annotation.startTimeS > model.viewport.startTimeS + model.viewport.durationS)) return null
         return (
           <rect
-            className="nsv-annotation"
+            className={`nsv-annotation is-${kind}`}
+            data-annotation-id={annotation.id}
             height={geometry.height}
             key={annotation.id}
             style={annotation.color === undefined ? undefined : { fill: annotation.color }}
-            width={Math.max(1, timeToX(end, model) - timeToX(start, model))}
+            width={kind === 'event' ? 1.5 : Math.max(1, timeToX(end, model) - timeToX(start, model))}
             x={timeToX(start, model)}
             y={geometry.top}
           />
@@ -87,7 +92,7 @@ export function SvgTraceRenderer(props: TraceRendererProps) {
       {model.ticks.map((tick) => (
         <g key={tick}>
           <line className="nsv-time-grid" x1={timeToX(tick, model)} x2={timeToX(tick, model)} y1={geometry.top} y2={geometry.top + geometry.height} />
-          <text className="nsv-time-label" textAnchor="middle" x={timeToX(tick, model)} y={props.height - 11}>
+          <text className="nsv-time-label" textAnchor="middle" x={timeToX(tick, model)} y={props.height - 40}>
             {formatTime(tick, model.viewport.durationS)}
           </text>
         </g>

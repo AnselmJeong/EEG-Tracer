@@ -12,11 +12,19 @@ Updated: 2026-09-04
 - `NaN` gap handling, annotations, bad-channel metadata, semantic channel summary, and status states
 - Deterministic 8-channel × 12-second ICA before/after playground fixture
 - Package dry-run and actual tarball installation in an isolated React 19 + Vite consumer
+- Phase 2 controlled/uncontrolled viewport, cursor, segment, and channel-selection state
+- Bounded time pan/zoom, per-channel-type gain, channel paging/count controls, and time scrollbar
+- Scoped keyboard controls, wheel navigation, click cursor, drag selection, and Shift-drag pan
+- Sample-snapped cursor/selection mapping, semantic cursor value readout, and static-mode fallback
+- Reducer invariant coverage, component interaction tests, and Chromium pointer/keyboard E2E
+- Phase 3 stacked annotation lanes, event markers, bad-segment patterns, and overlay filters
+- Previous/next context jumps plus a full-duration pointer and keyboard overview navigator
+- Explicit included-channel sets and capability/read-only-gated bad-channel intent controls
+- Semantic annotation details and color-independent kind labels for both renderers
 
 ## Deliberately deferred
 
-- Phase 2 navigation, zoom, gain controls, cursor, and segment selection
-- Phase 3 annotation editing and bad-channel intent controls
+- Phase 4 annotation editing intents and request coordination
 - Phase 4 request coordination, bounded cache, prefetch, channel virtualization, and benchmark gates
 - Phase 5 real-data trace-window endpoint and Testbed application migration
 

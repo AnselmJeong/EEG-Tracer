@@ -4,9 +4,9 @@ A backend-neutral React/TypeScript EEG trace viewer for NeuroSignal and other ne
 It renders only the requested viewport, keeps source data immutable, preserves `NaN` gaps, and
 supports locked-scale multi-layer comparisons through one component API.
 
-This repository currently implements the Phase 0–1 package boundary from
+This repository currently implements the Phase 0–3 package boundary from
 [`TRACE_VIEWER_REPOSITORY_PLAN.md`](TRACE_VIEWER_REPOSITORY_PLAN.md). The package is private-first
-and remains `0.x` until its interaction and long-recording phases are validated.
+and remains `0.x` until its long-recording phases are validated.
 
 ## Install from a local tarball
 
@@ -16,7 +16,7 @@ npm run build
 npm pack --workspace @neurosignal/trace-viewer
 ```
 
-Then install the emitted `neurosignal-trace-viewer-0.1.0.tgz` in a React consumer.
+Then install the emitted `neurosignal-trace-viewer-0.3.0.tgz` in a React consumer.
 
 ## NeuroSignal simulation adapter
 
@@ -65,12 +65,72 @@ For before/after ICA, create two sources with the same channel IDs and times, th
 The viewer validates source revision, channel identity, units, sampling rate, and time coordinates
 before drawing them on one locked scale.
 
+## Phase 2 interaction
+
+Navigation state may be uncontrolled through `defaultViewport` or controlled through `viewport`.
+Cursor, segment selection, and selected channel IDs follow the same pattern. Every callback returns
+a new intent value; the viewer never mutates source arrays or consumer state.
+
+```tsx
+<TraceViewer
+  ariaLabel="Interactive EEG review"
+  layers={layers}
+  defaultViewport={{ durationS: 10, visibleChannelCount: 20 }}
+  defaultCursor={{ timeS: 0 }}
+  defaultSelectedChannelIds={['Fp1']}
+  onViewportChange={setViewport}
+  onCursorChange={setCursor}
+  onSelectionChange={setSelection}
+  onSelectedChannelIdsChange={setSelectedChannelIds}
+/>
+```
+
+- Toolbar buttons and the time slider pan, zoom, scale amplitude, and page channels.
+- Click sets a sample-snapped cursor; drag creates a bounded segment; Shift-drag pans.
+- Horizontal wheel/trackpad input pans, vertical wheel input pages channels, and Alt-wheel zooms.
+- The focused plot supports arrows, Page Up/Down, Home/End, gain with plus/minus, time zoom with
+  Alt plus/minus, Enter channel selection, and Escape selection clearing.
+- Set `interactive={false}` to retain the Phase 1 static renderer as a rollback path.
+
+## Phase 3 review context
+
+Annotations, point events, and bad segments have distinct text/pattern treatments in a stacked lane
+and the full-recording overview. Their toolbar toggles filter display context without changing the
+source. Marker buttons, previous/next controls, overview clicks, and overview keyboard navigation
+jump the viewport and linked cursor together.
+
+`readOnly` defaults to `true`. A bad-channel control is exposed only when the viewer is explicitly
+made writable, the source advertises `canMarkBadChannels`, and a callback is provided. Clicking it
+emits a request but does not alter metadata; the consumer must confirm, persist a derivative/project
+state, and return a new source revision.
+
+```tsx
+const source = createArrayTraceSource({
+  sourceId: 'review',
+  timesS,
+  series,
+  annotations,
+  capabilities: { canMarkBadChannels: true },
+})
+
+<TraceViewer
+  ariaLabel="EEG review"
+  includedChannelIds={['Fp1', 'Fp2', 'C3']}
+  layers={[{ id: 'signal', label: 'Signal', source }]}
+  onBadChannelIntent={(channelId, bad) => requestReviewChange({ channelId, bad })}
+  readOnly={false}
+/>
+```
+
 ## Public surface
 
 - `TraceViewer`
 - `createArrayTraceSource`
 - Backend-neutral metadata, viewport, typed-array window, annotation, selection, and layer types
 - Explicit CSS export: `@neurosignal/trace-viewer/styles.css`
+- Controlled/uncontrolled viewport, cursor, segment selection, and channel-selection callbacks
+- Explicit included-channel set, annotation/event filters and jump navigation, recording overview,
+  capability-gated bad-channel intent callback
 
 The package does not import MNE, FastAPI, project IDs, file paths, authentication, or consumer state.
 It never mutates source arrays and does not expose a trace-data export API.
@@ -81,6 +141,7 @@ It never mutates source arrays and does not expose a trace-data export API.
 npm run typecheck
 npm run lint
 npm test
+npm run test:browser
 npm run build
 npm run check:pack
 ```

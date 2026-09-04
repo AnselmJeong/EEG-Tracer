@@ -6,6 +6,7 @@ export { createArrayTraceSource } from './data-source/createArrayTraceSource'
 export type { ArrayTraceSourceOptions } from './data-source/createArrayTraceSource'
 export type {
   TraceAnnotation,
+  TraceAnnotationKind,
   TraceAnnotationIntent,
   TraceCapabilities,
   TraceChannel,

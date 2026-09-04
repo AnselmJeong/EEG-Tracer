@@ -1,12 +1,14 @@
 import type { TraceCapabilities } from './capabilities'
 import type { TraceChannel } from './channel'
 
+export type TraceAnnotationKind = 'annotation' | 'event' | 'bad-segment'
+
 export interface TraceAnnotation {
   id: string
   label: string
   startTimeS: number
   durationS: number
-  kind?: 'annotation' | 'event' | 'bad-segment'
+  kind?: TraceAnnotationKind
   color?: string
 }
 

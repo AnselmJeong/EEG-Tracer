@@ -1,3 +1,4 @@
+import { layoutAnnotations } from '../annotations/annotation-layout'
 import type { TraceChannel } from '../model/channel'
 import type { TraceMetadata, TraceSeries, TraceWindow } from '../model/trace-data'
 import type { TraceLayer } from '../model/viewer'
@@ -60,9 +61,15 @@ export function createRenderModel(props: TraceRendererProps): TraceRenderModel {
   ) ?? []
   const left = Math.min(118, Math.max(76, props.width * 0.13))
   const right = 22
-  const top = 10
-  const bottom = 34
   const plotWidth = Math.max(1, props.width - left - right)
+  const annotationLayout = layoutAnnotations(
+    props.layers[0]?.window.annotations ?? [],
+    props.viewport,
+    plotWidth,
+  )
+  const annotationLaneCount = Math.min(4, annotationLayout.reduce((maximum, item) => Math.max(maximum, item.lane + 1), 0))
+  const top = annotationLaneCount === 0 ? 10 : 14 + annotationLaneCount * 19
+  const bottom = 58
   const plotHeight = Math.max(1, props.height - top - bottom)
   const amplitudeMaxByUnit = new Map<string, number>()
 

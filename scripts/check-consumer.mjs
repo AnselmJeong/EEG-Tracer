@@ -53,10 +53,20 @@ const source = createArrayTraceSource({
   sourceId: 'consumer-check',
   timesS: [0, 0.5, 1],
   series: { Fp1: [0, 4, 0], Fp2: [0, 2, 0] },
+  annotations: [{ id: 'event', label: 'Stimulus', startTimeS: 0.5, durationS: 0, kind: 'event' }],
+  capabilities: { canMarkBadChannels: true },
 })
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing root')
-createRoot(root).render(<TraceViewer ariaLabel="Tarball consumer EEG" layers={[{ id: 'eeg', label: 'EEG', source }]} />)
+createRoot(root).render(
+  <TraceViewer
+    ariaLabel="Tarball consumer EEG"
+    includedChannelIds={['Fp1']}
+    layers={[{ id: 'eeg', label: 'EEG', source }]}
+    onBadChannelIntent={(channelId, bad) => { console.info(channelId, bad) }}
+    readOnly={false}
+  />,
+)
 `)
 
 execFileSync('npm', ['install', '--legacy-peer-deps', '--ignore-scripts', '--package-lock=false'], { cwd: consumerRoot, stdio: 'pipe' })

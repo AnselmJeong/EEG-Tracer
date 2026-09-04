@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { createArrayTraceSource } from '../src/data-source/createArrayTraceSource'
+import type { TraceAnnotation } from '../src/model/trace-data'
+import type { TraceChannel } from '../src/model/channel'
 
 describe('createArrayTraceSource', () => {
   it('returns immutable metadata and requested point windows', async () => {
@@ -56,5 +58,51 @@ describe('createArrayTraceSource', () => {
     const controller = new AbortController()
     controller.abort()
     await expect(source.getMetadata(controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('defaults to read-only capabilities and only exposes explicitly enabled intents', async () => {
+    const readOnly = createArrayTraceSource({ sourceId: 'read-only', timesS: [0, 1], series: { C3: [0, 1] } })
+    const review = createArrayTraceSource({
+      capabilities: { canMarkBadChannels: true },
+      sourceId: 'review',
+      timesS: [0, 1],
+      series: { C3: [0, 1] },
+    })
+
+    await expect(readOnly.getMetadata()).resolves.toMatchObject({
+      capabilities: { canEditAnnotations: false, canMarkBadChannels: false },
+    })
+    await expect(review.getMetadata()).resolves.toMatchObject({
+      capabilities: { canEditAnnotations: false, canMarkBadChannels: true },
+    })
+  })
+
+  it('copies channel and annotation objects before exposing immutable metadata', async () => {
+    const channel: TraceChannel = { id: 'C3', label: 'C3', type: 'eeg', unit: 'µV', bad: false }
+    const annotation: TraceAnnotation = { id: 'event', label: 'Original event', startTimeS: 0.5, durationS: 0, kind: 'event' }
+    const source = createArrayTraceSource({
+      annotations: [annotation],
+      channels: [channel],
+      sourceId: 'copied-context',
+      timesS: [0, 1],
+      series: { C3: [0, 1] },
+    })
+    channel.label = 'Changed outside'
+    annotation.label = 'Changed outside'
+
+    const metadata = await source.getMetadata()
+    expect(metadata.channels[0]?.label).toBe('C3')
+    expect(metadata.annotations[0]?.label).toBe('Original event')
+    expect(Object.isFrozen(metadata.channels[0])).toBe(true)
+    expect(Object.isFrozen(metadata.annotations[0])).toBe(true)
+  })
+
+  it('rejects invalid annotation metadata at the adapter boundary', () => {
+    expect(() => createArrayTraceSource({
+      annotations: [{ id: 'bad-duration', label: 'Bad duration', startTimeS: 0, durationS: -1 }],
+      sourceId: 'invalid-context',
+      timesS: [0, 1],
+      series: { C3: [0, 1] },
+    })).toThrow('non-negative duration')
   })
 })

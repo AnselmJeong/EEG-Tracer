@@ -7,6 +7,7 @@ export type { TraceChannel, TraceChannelPosition, TraceChannelType } from './cha
 export type { TraceCursor, TraceSelection } from './selection'
 export type {
   TraceAnnotation,
+  TraceAnnotationKind,
   TraceAnnotationIntent,
   TraceDataSource,
   TraceMetadata,

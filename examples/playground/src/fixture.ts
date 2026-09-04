@@ -42,7 +42,14 @@ export function makeLayers(): readonly TraceLayer[] {
     title: 'ICA artifact recovery · planted blink',
     timesS,
     channels,
-    annotations: [{ id: 'blink', label: 'Planted blink', startTimeS: 4.9, durationS: 0.7, kind: 'event' as const }],
+    annotations: [
+      { id: 'calibration', label: 'Calibration settled', startTimeS: 0, durationS: 0.55, kind: 'annotation' as const },
+      { id: 'blink-window', label: 'Planted blink window', startTimeS: 4.9, durationS: 0.7, kind: 'annotation' as const },
+      { id: 'blink-peak', label: 'Planted blink peak', startTimeS: 5.25, durationS: 0, kind: 'event' as const },
+      { id: 'movement', label: 'Movement contamination', startTimeS: 5.15, durationS: 0.22, kind: 'bad-segment' as const },
+      { id: 'recording-end', label: 'Review continues past end', startTimeS: 11.7, durationS: 0.45, kind: 'annotation' as const },
+    ],
+    capabilities: { canMarkBadChannels: true },
   }
 
   return [

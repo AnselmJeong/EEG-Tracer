@@ -1,6 +1,6 @@
 {
   "name": "neurosignal-trace-viewer-workspace",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -9,9 +9,10 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.json --noEmit --pretty false",
+    "lint": "npm run lint --workspaces --if-present && eslint playwright.config.ts tests/browser",
     "test": "npm run test --workspaces --if-present",
+    "test:browser": "playwright test",
     "check:pack": "node scripts/check-package.mjs",
     "check:consumer": "node scripts/check-consumer.mjs"
   },
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "@playwright/test": "^1.62.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.0",

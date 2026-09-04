@@ -1,6 +1,6 @@
 {
   "name": "@neurosignal/trace-viewer",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Backend-neutral React EEG trace viewer",
   "type": "module",
   "files": [

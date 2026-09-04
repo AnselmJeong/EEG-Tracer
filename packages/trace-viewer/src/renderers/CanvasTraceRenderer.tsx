@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 
+import { annotationKind } from '../annotations/annotation-layout'
 import type { TraceSeries } from '../model/trace-data'
 import {
   createRenderModel,
@@ -80,9 +81,18 @@ export function CanvasTraceRenderer(props: TraceRendererProps) {
     for (const annotation of model.layers[0]?.window.annotations ?? []) {
       const start = Math.max(model.viewport.startTimeS, annotation.startTimeS)
       const end = Math.min(model.viewport.startTimeS + model.viewport.durationS, annotation.startTimeS + annotation.durationS)
-      if (end <= start) continue
-      context.fillStyle = annotation.color ?? 'rgba(198, 101, 60, 0.12)'
-      context.fillRect(timeToX(start, model), geometry.top, Math.max(1, timeToX(end, model) - timeToX(start, model)), geometry.height)
+      const kind = annotationKind(annotation)
+      if (kind !== 'event' && end < start) continue
+      if (kind === 'event' && (annotation.startTimeS < model.viewport.startTimeS
+        || annotation.startTimeS > model.viewport.startTimeS + model.viewport.durationS)) continue
+      context.fillStyle = annotation.color
+        ?? (kind === 'bad-segment' ? 'rgba(176, 57, 57, 0.14)' : kind === 'event' ? 'rgba(40, 109, 109, 0.55)' : 'rgba(198, 101, 60, 0.12)')
+      context.fillRect(
+        timeToX(start, model),
+        geometry.top,
+        kind === 'event' ? 1.5 : Math.max(1, timeToX(end, model) - timeToX(start, model)),
+        geometry.height,
+      )
     }
 
     context.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'
@@ -97,7 +107,7 @@ export function CanvasTraceRenderer(props: TraceRendererProps) {
       context.stroke()
       context.fillStyle = mutedColor
       context.textAlign = 'center'
-      context.fillText(formatTime(tick, model.viewport.durationS), x, props.height - 15)
+      context.fillText(formatTime(tick, model.viewport.durationS), x, props.height - 40)
     }
 
     context.save()

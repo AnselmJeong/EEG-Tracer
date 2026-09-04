@@ -1,4 +1,5 @@
 import { READ_ONLY_TRACE_CAPABILITIES } from '../model/capabilities'
+import type { TraceCapabilities } from '../model/capabilities'
 import type { TraceChannel } from '../model/channel'
 import type {
   TraceAnnotation,
@@ -18,6 +19,7 @@ export interface ArrayTraceSourceOptions {
   channels?: readonly TraceChannel[]
   unit?: string
   annotations?: readonly TraceAnnotation[]
+  capabilities?: Partial<TraceCapabilities>
 }
 
 function abortIfNeeded(signal?: AbortSignal): void {
@@ -95,7 +97,10 @@ function samplingRate(timesS: Float64Array): number {
   }
   differences.sort((a, b) => a - b)
   const median = differences[Math.floor(differences.length / 2)] ?? 1
-  return median > 0 ? 1 / median : 1
+  if (median <= 0) return 1
+  const inferred = 1 / median
+  const rounded = Math.round(inferred)
+  return Math.abs(inferred - rounded) <= Math.max(1, inferred) * 1e-9 ? rounded : inferred
 }
 
 function validateInput(options: ArrayTraceSourceOptions, timesS: Float64Array): void {
@@ -119,19 +124,33 @@ function validateInput(options: ArrayTraceSourceOptions, timesS: Float64Array): 
       throw new Error(`Channel ${channelId} has ${values.length} samples; expected ${timesS.length}.`)
     }
   }
+
+  const annotations = options.annotations ?? []
+  const annotationIds = annotations.map(({ id }) => id)
+  if (new Set(annotationIds).size !== annotationIds.length) throw new Error('Annotation IDs must be unique.')
+  for (const annotation of annotations) {
+    if (!annotation.id.trim() || !annotation.label.trim()) throw new Error('Annotation IDs and labels must not be empty.')
+    if (!Number.isFinite(annotation.startTimeS) || !Number.isFinite(annotation.durationS) || annotation.durationS < 0) {
+      throw new Error(`Annotation ${annotation.id} must use a finite start time and non-negative duration.`)
+    }
+  }
 }
 
 export function createArrayTraceSource(options: ArrayTraceSourceOptions): TraceDataSource {
   const timesS = Float64Array.from(options.timesS)
   validateInput(options, timesS)
 
-  const channels: readonly TraceChannel[] = options.channels ?? Object.keys(options.series).map((id) => ({
+  const sourceChannels: readonly TraceChannel[] = options.channels ?? Object.keys(options.series).map((id): TraceChannel => ({
     id,
     label: id,
     type: 'eeg',
     unit: options.unit ?? 'µV',
     bad: false,
   }))
+  const channels: readonly TraceChannel[] = Object.freeze(sourceChannels.map((channel) => Object.freeze({
+    ...channel,
+    ...(channel.position === undefined ? {} : { position: Object.freeze({ ...channel.position }) }),
+  })))
   const valuesByChannel = new Map<string, Float32Array>()
   for (const channel of channels) {
     const values = options.series[channel.id]
@@ -143,7 +162,8 @@ export function createArrayTraceSource(options: ArrayTraceSourceOptions): TraceD
   const rate = samplingRate(timesS)
   const durationS = Math.max(1 / rate, lastTime - firstTime + 1 / rate)
   const revision = options.revision ?? '1'
-  const annotations = Object.freeze([...(options.annotations ?? [])])
+  const annotations = Object.freeze((options.annotations ?? []).map((annotation) => Object.freeze({ ...annotation })))
+  const capabilities = Object.freeze({ ...READ_ONLY_TRACE_CAPABILITIES, ...options.capabilities })
   const metadata: TraceMetadata = Object.freeze({
     sourceId: options.sourceId,
     revision,
@@ -151,9 +171,9 @@ export function createArrayTraceSource(options: ArrayTraceSourceOptions): TraceD
     startTimeS: firstTime,
     durationS,
     samplingRateHz: rate,
-    channels: Object.freeze([...channels]),
+    channels,
     annotations,
-    capabilities: READ_ONLY_TRACE_CAPABILITIES,
+    capabilities,
   })
 
   return {

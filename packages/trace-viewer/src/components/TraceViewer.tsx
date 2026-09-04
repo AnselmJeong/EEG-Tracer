@@ -1,25 +1,39 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { SemanticTraceSummary } from '../accessibility/semantic-summary'
-import type { TraceMetadata, TraceWindow } from '../model/trace-data'
-import type { TraceViewerProps } from '../model/viewer'
-import type { TraceViewport } from '../model/viewport'
+import { adjacentAnnotation, visibleAnnotations } from '../annotations/annotation-layout'
+import { TraceInteractionOverlay } from '../interactions/TraceInteractionOverlay'
+import type { TraceAnnotation, TraceAnnotationKind, TraceMetadata, TraceWindow } from '../model/trace-data'
+import type { TraceViewerProps, TraceLayer } from '../model/viewer'
 import { CanvasTraceRenderer } from '../renderers/CanvasTraceRenderer'
 import { SvgTraceRenderer } from '../renderers/SvgTraceRenderer'
+import { createRenderModel } from '../renderers/TraceRenderer'
 import type { LoadedTraceLayer } from '../renderers/TraceRenderer'
+import { constraintsFromMetadata } from '../state/invariants'
+import { useTraceViewer } from '../state/useTraceViewer'
+import type { TraceViewerAction, TraceViewerInteractionState } from '../state/trace-viewer-reducer'
+import { AnnotationLane } from './AnnotationLane'
+import { ChannelNavigator } from './ChannelNavigator'
+import { RecordingOverview } from './RecordingOverview'
+import { TraceInteractionStatus } from './TraceInteractionStatus'
 import { TraceStatus } from './TraceStatus'
 import { TraceToolbar } from './TraceToolbar'
 
-const FALLBACK_SIZE: { width: number; height: number } = { width: 920, height: 480 }
+const FALLBACK_STAGE_SIZE = { width: 920, height: 360 } as const
 
-type LoadState =
+type MetadataState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; layers: readonly LoadedTraceLayer[]; viewport: TraceViewport }
+  | { status: 'ready'; metadata: readonly TraceMetadata[] }
+
+type WindowState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; layers: readonly LoadedTraceLayer[] }
 
 function useElementSize() {
   const ref = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState(FALLBACK_SIZE)
+  const [size, setSize] = useState<{ height: number; width: number }>(FALLBACK_STAGE_SIZE)
 
   useEffect(() => {
     const element = ref.current
@@ -43,23 +57,6 @@ function useElementSize() {
   }, [])
 
   return { ref, size }
-}
-
-function resolveViewport(metadata: TraceMetadata, controlled: TraceViewport | undefined, defaults: Partial<TraceViewport> | undefined): TraceViewport {
-  const candidate = controlled ?? {
-    startTimeS: defaults?.startTimeS ?? metadata.startTimeS,
-    durationS: defaults?.durationS ?? metadata.durationS,
-    channelOffset: defaults?.channelOffset ?? 0,
-    visibleChannelCount: defaults?.visibleChannelCount ?? metadata.channels.length,
-    gainByType: defaults?.gainByType ?? {},
-  }
-  const minimumDuration = 1 / metadata.samplingRateHz
-  const durationS = Math.min(metadata.durationS, Math.max(minimumDuration, candidate.durationS))
-  const maximumStart = metadata.startTimeS + metadata.durationS - durationS
-  const startTimeS = Math.min(maximumStart, Math.max(metadata.startTimeS, candidate.startTimeS))
-  const visibleChannelCount = Math.min(metadata.channels.length, Math.max(1, Math.floor(candidate.visibleChannelCount)))
-  const channelOffset = Math.min(metadata.channels.length - visibleChannelCount, Math.max(0, Math.floor(candidate.channelOffset)))
-  return { ...candidate, startTimeS, durationS, visibleChannelCount, channelOffset }
 }
 
 function validateMetadata(metadata: readonly TraceMetadata[]): void {
@@ -101,23 +98,258 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The trace viewport could not be loaded.'
 }
 
-export function TraceViewer({
+function TraceStage({
+  announce,
   ariaLabel,
-  className,
-  defaultViewport,
+  dispatch,
+  helpId,
+  height,
+  interactive,
   layers,
-  readOnly = true,
-  renderer = 'canvas',
-  viewport,
-}: TraceViewerProps) {
-  const { ref, size } = useElementSize()
+  onBadChannelIntent,
+  overviewAnnotations,
+  readOnly,
+  renderer,
+  state,
+  width,
+}: {
+  announce: (message: string) => void
+  ariaLabel: string
+  dispatch: (action: TraceViewerAction) => void
+  height: number
+  helpId: string
+  interactive: boolean
+  layers: readonly LoadedTraceLayer[]
+  onBadChannelIntent: ((channelId: string, bad: boolean) => void) | undefined
+  overviewAnnotations: readonly TraceAnnotation[]
+  readOnly: boolean
+  renderer: 'canvas' | 'svg'
+  state: TraceViewerInteractionState
+  width: number
+}) {
+  const metadata = layers[0]?.metadata
+  if (metadata === undefined) throw new Error('Trace metadata is unavailable.')
+  const rendererProps = useMemo(() => ({
+    ariaLabel,
+    height,
+    layers,
+    viewport: state.viewport,
+    width,
+  }), [ariaLabel, height, layers, state.viewport, width])
+  const model = useMemo(() => createRenderModel(rendererProps), [rendererProps])
+  const constraints = useMemo(() => constraintsFromMetadata(metadata), [metadata])
+  const canMarkBadChannels = !readOnly && layers.every(({ metadata: layerMetadata }) => (
+    layerMetadata.capabilities.canMarkBadChannels
+  ))
+  const jumpToAnnotation = (annotation: TraceAnnotation): void => {
+    dispatch({ type: 'jump-to-time', timeS: annotation.startTimeS })
+    announce(`Jumped to ${annotation.label} at ${annotation.startTimeS.toFixed(3)} seconds.`)
+  }
+
+  return (
+    <>
+      {renderer === 'svg' ? <SvgTraceRenderer {...rendererProps} /> : <CanvasTraceRenderer {...rendererProps} />}
+      {interactive ? (
+        <>
+          <ChannelNavigator
+            announce={announce}
+            canMarkBadChannels={canMarkBadChannels}
+            dispatch={dispatch}
+            model={model}
+            onBadChannelIntent={onBadChannelIntent}
+            state={state}
+          />
+          <TraceInteractionOverlay announce={announce} constraints={constraints} describedById={helpId} dispatch={dispatch} model={model} state={state} />
+          <RecordingOverview
+            annotations={overviewAnnotations}
+            announce={announce}
+            dispatch={dispatch}
+            left={model.geometry.left}
+            metadata={metadata}
+            state={state}
+            width={model.geometry.width}
+          />
+        </>
+      ) : null}
+      <AnnotationLane
+        annotations={layers[0]?.window.annotations ?? []}
+        interactive={interactive}
+        model={model}
+        onJump={jumpToAnnotation}
+      />
+    </>
+  )
+}
+
+function TraceViewerReady({
+  interactive,
+  metadataLayers,
+  visibleLayers,
+  ...props
+}: TraceViewerProps & {
+  interactive: boolean
+  metadataLayers: readonly TraceMetadata[]
+  visibleLayers: readonly TraceLayer[]
+}) {
+  const canonical = metadataLayers[0]
+  if (canonical === undefined) throw new Error('Trace metadata is unavailable.')
+  const includedChannelIds = props.includedChannelIds
+  const includedChannelSet = useMemo(() => (
+    includedChannelIds === undefined ? null : new Set(includedChannelIds)
+  ), [includedChannelIds])
+  const displayMetadataLayers = useMemo(() => metadataLayers.map((metadata) => ({
+    ...metadata,
+    channels: includedChannelSet === null
+      ? metadata.channels
+      : metadata.channels.filter(({ id }) => includedChannelSet.has(id)),
+  })), [includedChannelSet, metadataLayers])
+  const displayMetadata = displayMetadataLayers[0]
+  if (displayMetadata === undefined) throw new Error('Trace metadata is unavailable.')
+  const controller = useTraceViewer(displayMetadata, props)
+  const { ref: stageRef, size } = useElementSize()
+  const [windowState, setWindowState] = useState<WindowState>({ status: 'loading' })
+  const [announcement, setAnnouncement] = useState('')
+  const [visibleAnnotationKinds, setVisibleAnnotationKinds] = useState<Record<TraceAnnotationKind, boolean>>({
+    annotation: true,
+    event: true,
+    'bad-segment': true,
+  })
+  const helpId = useId()
+  const { viewport } = controller.state
+  const channelIds = useMemo(() => displayMetadata.channels
+    .slice(viewport.channelOffset, viewport.channelOffset + viewport.visibleChannelCount)
+    .map(({ id }) => id), [displayMetadata.channels, viewport.channelOffset, viewport.visibleChannelCount])
+
+  useEffect(() => {
+    const abortController = new AbortController()
+    let current = true
+    setWindowState((currentState) => currentState.status === 'ready' ? currentState : { status: 'loading' })
+
+    async function load(): Promise<void> {
+      try {
+        const windows = await Promise.all(visibleLayers.map((layer, index) => {
+          const layerMetadata = displayMetadataLayers[index]
+          if (layerMetadata === undefined) throw new Error(`Metadata is unavailable for layer ${layer.id}.`)
+          return layer.source.getWindow({
+            sourceRevision: layerMetadata.revision,
+            startTimeS: viewport.startTimeS,
+            durationS: viewport.durationS,
+            channelIds,
+            pixelWidth: Math.max(1, size.width),
+            preferredRepresentation: 'auto',
+          }, abortController.signal)
+        }))
+        const loaded = visibleLayers.map((layer, index): LoadedTraceLayer => {
+          const metadata = displayMetadataLayers[index]
+          const window = windows[index]
+          if (metadata === undefined || window === undefined) throw new Error(`Layer ${layer.id} did not return data.`)
+          validateWindow(metadata, window)
+          return { layer, metadata, window }
+        })
+        if (current) setWindowState({ status: 'ready', layers: loaded })
+      } catch (error: unknown) {
+        if (current && !(error instanceof DOMException && error.name === 'AbortError')) {
+          setWindowState({ status: 'error', message: errorMessage(error) })
+        }
+      }
+    }
+
+    void load()
+    return () => {
+      current = false
+      abortController.abort()
+    }
+  }, [channelIds, displayMetadataLayers, size.width, viewport.durationS, viewport.startTimeS, visibleLayers])
+
+  const renderer = props.renderer ?? 'canvas'
+  const readOnly = props.readOnly ?? true
+  const intentEnabled = !readOnly
+    && props.onBadChannelIntent !== undefined
+    && displayMetadataLayers.every(({ capabilities }) => capabilities.canMarkBadChannels)
+  const overviewAnnotations = useMemo(() => visibleAnnotations(
+    displayMetadata.annotations,
+    visibleAnnotationKinds,
+  ), [displayMetadata.annotations, visibleAnnotationKinds])
+  const displayWindowLayers = useMemo(() => windowState.status === 'ready'
+    ? windowState.layers.map((loaded) => ({
+      ...loaded,
+      window: {
+        ...loaded.window,
+        annotations: visibleAnnotations(loaded.window.annotations, visibleAnnotationKinds),
+      },
+    }))
+    : [], [visibleAnnotationKinds, windowState])
+  const jumpAnnotation = (direction: 'next' | 'previous'): void => {
+    const referenceTimeS = controller.state.cursor?.timeS
+      ?? (direction === 'next'
+        ? controller.state.viewport.startTimeS
+        : controller.state.viewport.startTimeS + controller.state.viewport.durationS)
+    const target = adjacentAnnotation(overviewAnnotations, referenceTimeS, direction)
+    if (target === undefined) return
+    controller.dispatch({ type: 'jump-to-time', timeS: target.startTimeS })
+    setAnnouncement(`Jumped to ${target.label} at ${target.startTimeS.toFixed(3)} seconds.`)
+  }
+  return (
+    <>
+      {windowState.status === 'ready' ? (
+        <TraceToolbar
+          dispatch={controller.dispatch}
+          interactive={interactive}
+          intentEnabled={intentEnabled}
+          layers={displayWindowLayers}
+          metadata={displayMetadata}
+          onJumpAnnotation={jumpAnnotation}
+          onToggleAnnotationKind={(kind) => setVisibleAnnotationKinds((current) => ({
+            ...current,
+            [kind]: !current[kind],
+          }))}
+          state={controller.state}
+          visibleAnnotationKinds={visibleAnnotationKinds}
+        />
+      ) : null}
+      <div className="nsv-stage" ref={stageRef}>
+        {windowState.status === 'loading' ? <TraceStatus kind="loading" message="Loading signal viewport…" /> : null}
+        {windowState.status === 'error' ? <TraceStatus kind="error" message={windowState.message} /> : null}
+        {windowState.status === 'ready' ? (
+          <TraceStage
+            announce={setAnnouncement}
+            ariaLabel={props.ariaLabel}
+            dispatch={controller.dispatch}
+            height={Math.max(220, size.height)}
+            helpId={helpId}
+            interactive={interactive}
+            layers={displayWindowLayers}
+            onBadChannelIntent={props.onBadChannelIntent}
+            overviewAnnotations={overviewAnnotations}
+            readOnly={readOnly}
+            renderer={renderer}
+            state={controller.state}
+            width={size.width}
+          />
+        ) : null}
+      </div>
+      {windowState.status === 'ready' ? (
+        <>
+          {interactive ? <TraceInteractionStatus helpId={helpId} layers={displayWindowLayers} state={controller.state} /> : null}
+          <SemanticTraceSummary layers={displayWindowLayers} viewport={controller.state.viewport} />
+        </>
+      ) : null}
+      <div aria-atomic="true" aria-live="polite" className="nsv-sr-only">{announcement}</div>
+    </>
+  )
+}
+
+export function TraceViewer(props: TraceViewerProps) {
+  const { ariaLabel, className, layers } = props
+  const interactive = props.interactive ?? true
   const visibleLayers = useMemo(() => layers.filter(({ visible }) => visible !== false), [layers])
-  const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' })
+  const includedChannelKey = props.includedChannelIds?.join('\u0000') ?? ''
+  const [metadataState, setMetadataState] = useState<MetadataState>({ status: 'loading' })
 
   useEffect(() => {
     const controller = new AbortController()
     let current = true
-    setLoadState({ status: 'loading' })
+    setMetadataState({ status: 'loading' })
 
     async function load(): Promise<void> {
       try {
@@ -125,35 +357,16 @@ export function TraceViewer({
         if (visibleLayers.length === 0) throw new Error('At least one visible trace layer is required.')
         const metadata = await Promise.all(visibleLayers.map(({ source }) => source.getMetadata(controller.signal)))
         validateMetadata(metadata)
-        const canonical = metadata[0]
-        if (canonical === undefined) throw new Error('Trace metadata is unavailable.')
-        const resolvedViewport = resolveViewport(canonical, viewport, defaultViewport)
-        const channelIds = canonical.channels
-          .slice(resolvedViewport.channelOffset, resolvedViewport.channelOffset + resolvedViewport.visibleChannelCount)
-          .map(({ id }) => id)
-        const windows = await Promise.all(visibleLayers.map((layer, index) => {
-          const layerMetadata = metadata[index]
-          if (layerMetadata === undefined) throw new Error(`Metadata is unavailable for layer ${layer.id}.`)
-          return layer.source.getWindow({
-            sourceRevision: layerMetadata.revision,
-            startTimeS: resolvedViewport.startTimeS,
-            durationS: resolvedViewport.durationS,
-            channelIds,
-            pixelWidth: Math.max(1, size.width),
-            preferredRepresentation: 'auto',
-          }, controller.signal)
-        }))
-        const loaded = visibleLayers.map((layer, index): LoadedTraceLayer => {
-          const layerMetadata = metadata[index]
-          const window = windows[index]
-          if (layerMetadata === undefined || window === undefined) throw new Error(`Layer ${layer.id} did not return data.`)
-          validateWindow(layerMetadata, window)
-          return { layer, metadata: layerMetadata, window }
-        })
-        if (current) setLoadState({ status: 'ready', layers: loaded, viewport: resolvedViewport })
+        if (props.includedChannelIds !== undefined) {
+          const included = new Set(props.includedChannelIds)
+          if (!metadata[0]?.channels.some(({ id }) => included.has(id))) {
+            throw new Error('includedChannelIds must contain at least one channel from the trace source.')
+          }
+        }
+        if (current) setMetadataState({ status: 'ready', metadata })
       } catch (error: unknown) {
         if (current && !(error instanceof DOMException && error.name === 'AbortError')) {
-          setLoadState({ status: 'error', message: errorMessage(error) })
+          setMetadataState({ status: 'error', message: errorMessage(error) })
         }
       }
     }
@@ -163,24 +376,22 @@ export function TraceViewer({
       current = false
       controller.abort()
     }
-  }, [ariaLabel, defaultViewport, size.width, viewport, visibleLayers])
+  }, [ariaLabel, includedChannelKey, props.includedChannelIds, visibleLayers])
 
-  const rootClassName = ['nsv-viewer', className].filter(Boolean).join(' ')
+  const rootClassName = ['nsv-viewer', interactive ? 'is-interactive' : 'is-static', className].filter(Boolean).join(' ')
   return (
-    <section aria-busy={loadState.status === 'loading'} aria-label={`${ariaLabel} controls`} className={rootClassName} ref={ref}>
-      {loadState.status === 'loading' && <TraceStatus kind="loading" message="Loading signal viewport…" />}
-      {loadState.status === 'error' && <TraceStatus kind="error" message={loadState.message} />}
-      {loadState.status === 'ready' && (
-        <>
-          <TraceToolbar layers={loadState.layers} readOnly={readOnly} />
-          <div className="nsv-stage">
-            {renderer === 'svg'
-              ? <SvgTraceRenderer ariaLabel={ariaLabel} height={Math.max(260, size.height - 72)} layers={loadState.layers} viewport={loadState.viewport} width={size.width} />
-              : <CanvasTraceRenderer ariaLabel={ariaLabel} height={Math.max(260, size.height - 72)} layers={loadState.layers} viewport={loadState.viewport} width={size.width} />}
-          </div>
-          <SemanticTraceSummary layers={loadState.layers} viewport={loadState.viewport} />
-        </>
-      )}
+    <section aria-busy={metadataState.status === 'loading'} aria-label={`${ariaLabel} controls`} className={rootClassName}>
+      {metadataState.status === 'loading' ? <TraceStatus kind="loading" message="Loading signal metadata…" /> : null}
+      {metadataState.status === 'error' ? <TraceStatus kind="error" message={metadataState.message} /> : null}
+      {metadataState.status === 'ready' ? (
+        <TraceViewerReady
+          {...props}
+          interactive={interactive}
+          key={`${metadataState.metadata.map(({ sourceId, revision }) => `${sourceId}:${revision}`).join('|')}|${includedChannelKey}`}
+          metadataLayers={metadataState.metadata}
+          visibleLayers={visibleLayers}
+        />
+      ) : null}
     </section>
   )
 }

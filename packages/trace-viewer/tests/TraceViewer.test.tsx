@@ -1,5 +1,5 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
 import { TraceViewer } from '../src/components/TraceViewer'
 import { createArrayTraceSource } from '../src/data-source/createArrayTraceSource'
@@ -18,6 +18,27 @@ function source(id: string, multiplier = 1, unit = 'µV') {
       Fp2: [0, 2 * multiplier, 0],
       C3: [0, 1 * multiplier, 0],
     },
+  })
+}
+
+function contextSource(id: string, canMarkBadChannels = true) {
+  return createArrayTraceSource({
+    annotations: [
+      { id: 'review', label: 'Reviewed segment', startTimeS: 0, durationS: 1.2 },
+      { id: 'bad', kind: 'bad-segment', label: 'Movement contamination', startTimeS: 0.4, durationS: 0.5 },
+      { id: 'narrow', label: 'Narrow context', startTimeS: 0.5, durationS: 0.01 },
+      { id: 'late', kind: 'event', label: 'Late spike', startTimeS: 8, durationS: 0 },
+      { id: 'boundary', label: 'Recording end context', startTimeS: 9.8, durationS: 2 },
+    ],
+    capabilities: { canMarkBadChannels },
+    channels,
+    series: {
+      Fp1: Array.from({ length: 11 }, (_, index) => index),
+      Fp2: Array.from({ length: 11 }, (_, index) => index * 0.5),
+      C3: Array.from({ length: 11 }, (_, index) => -index),
+    },
+    sourceId: id,
+    timesS: Array.from({ length: 11 }, (_, index) => index),
   })
 }
 
@@ -57,5 +78,196 @@ describe('TraceViewer', () => {
     const plot = await screen.findByRole('img', { name: 'Gap trace' })
     const path = plot.querySelector('[data-layer="gap"]')
     expect(path?.getAttribute('d')?.match(/M/g)).toHaveLength(2)
+  })
+
+  it('emits keyboard navigation and gain changes from an uncontrolled viewport', async () => {
+    const onViewportChange = vi.fn()
+    const onSelectedChannelIdsChange = vi.fn()
+    render(
+      <TraceViewer
+        ariaLabel="Keyboard trace"
+        defaultViewport={{ durationS: 0.5, visibleChannelCount: 2 }}
+        layers={[{ id: 'signal', label: 'Signal', source: source('keyboard') }]}
+        onSelectedChannelIdsChange={onSelectedChannelIdsChange}
+        onViewportChange={onViewportChange}
+        renderer="svg"
+      />,
+    )
+
+    const surface = await screen.findByRole('application', { name: 'Interactive trace viewport' })
+    fireEvent.keyDown(surface, { key: 'ArrowRight' })
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({ startTimeS: 0.05, durationS: 0.5 }))
+
+    fireEvent.keyDown(surface, { key: '+' })
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({ gainByType: { eeg: 2 } }))
+
+    fireEvent.keyDown(surface, { key: 'Enter' })
+    expect(onSelectedChannelIdsChange).toHaveBeenLastCalledWith(['Fp1'])
+  })
+
+  it('keeps a controlled viewport fixed while emitting the requested next state', async () => {
+    const onViewportChange = vi.fn()
+    render(
+      <TraceViewer
+        ariaLabel="Controlled trace"
+        layers={[{ id: 'signal', label: 'Signal', source: source('controlled') }]}
+        onViewportChange={onViewportChange}
+        renderer="svg"
+        viewport={{ startTimeS: 0, durationS: 0.5, channelOffset: 0, visibleChannelCount: 2, gainByType: {} }}
+      />,
+    )
+
+    const surface = await screen.findByRole('application', { name: 'Interactive trace viewport' })
+    fireEvent.keyDown(surface, { key: 'ArrowRight' })
+    expect(onViewportChange).toHaveBeenCalledWith(expect.objectContaining({ startTimeS: 0.05 }))
+    expect(screen.getByRole('slider', { name: 'Time position' })).toHaveValue('0')
+  })
+
+  it('maps pointer clicks and reverse drags to snapped cursor and selection callbacks', async () => {
+    const onCursorChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    render(
+      <TraceViewer
+        ariaLabel="Pointer trace"
+        layers={[{ id: 'signal', label: 'Signal', source: source('pointer') }]}
+        onCursorChange={onCursorChange}
+        onSelectionChange={onSelectionChange}
+        renderer="svg"
+      />,
+    )
+    const surface = await screen.findByRole('application', { name: 'Interactive trace viewport' })
+    surface.getBoundingClientRect = () => ({
+      bottom: 300,
+      height: 300,
+      left: 100,
+      right: 900,
+      top: 0,
+      width: 800,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(surface, { button: 0, clientX: 500, clientY: 100, pointerId: 1 })
+    fireEvent.pointerUp(surface, { button: 0, clientX: 500, clientY: 100, pointerId: 1 })
+    expect(onCursorChange).toHaveBeenLastCalledWith({ timeS: 1, channelId: 'Fp2' })
+
+    fireEvent.pointerDown(surface, { button: 0, clientX: 800, clientY: 100, pointerId: 2 })
+    fireEvent.pointerMove(surface, { button: 0, clientX: 200, clientY: 100, pointerId: 2 })
+    fireEvent.pointerUp(surface, { button: 0, clientX: 200, clientY: 100, pointerId: 2 })
+    expect(onSelectionChange).toHaveBeenLastCalledWith({ startTimeS: 0, endTimeS: 1.5 })
+  })
+
+  it('can preserve the Phase 1 static surface behind the interaction feature flag', async () => {
+    render(<TraceViewer ariaLabel="Static trace" interactive={false} layers={[{ id: 'signal', label: 'Signal', source: source('static') }]} renderer="svg" />)
+    expect(await screen.findByRole('img', { name: 'Static trace' })).toBeVisible()
+    expect(screen.queryByRole('application')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Zoom in in time' })).not.toBeInTheDocument()
+  })
+
+  it('lays out semantic annotation lanes, hides cramped labels, and filters by kind', async () => {
+    render(
+      <TraceViewer
+        ariaLabel="Context trace"
+        defaultViewport={{ durationS: 2 }}
+        layers={[{ id: 'signal', label: 'Signal', source: contextSource('context') }]}
+        renderer="svg"
+      />,
+    )
+
+    const lane = await screen.findByRole('list', { name: 'Visible annotations and events' })
+    expect(within(lane).getByRole('button', { name: /Narrow context/ })).toBeVisible()
+    expect(within(lane).queryByText('Narrow context')).not.toBeInTheDocument()
+    expect(within(lane).getAllByText('ANN').length).toBeGreaterThan(0)
+    expect(within(lane).getByText('BAD')).toBeVisible()
+
+    expect(screen.getByRole('button', { name: /Jump to event Late spike/ })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Show event overlays' }))
+    expect(screen.queryByRole('button', { name: /Jump to event Late spike/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show event overlays' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('jumps to events from toolbar and overview keyboard navigation', async () => {
+    const onCursorChange = vi.fn()
+    const onViewportChange = vi.fn()
+    render(
+      <TraceViewer
+        ariaLabel="Jump trace"
+        defaultViewport={{ durationS: 2 }}
+        layers={[{ id: 'signal', label: 'Signal', source: contextSource('jump') }]}
+        onCursorChange={onCursorChange}
+        onViewportChange={onViewportChange}
+        renderer="svg"
+      />,
+    )
+
+    await screen.findByRole('group', { name: 'Recording overview' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show annotation overlays' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show bad-segment overlays' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to next visible annotation or event' }))
+    expect(onCursorChange).toHaveBeenLastCalledWith({ timeS: 8 })
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({ startTimeS: 7 }))
+
+    const overview = screen.getByRole('slider', { name: /Recording overview, visible window/ })
+    fireEvent.keyDown(overview, { key: 'End' })
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({ startTimeS: 9 }))
+  })
+
+  it('emits bad-channel intent without mutating source metadata and honors read-only gates', async () => {
+    const onBadChannelIntent = vi.fn()
+    const { rerender } = render(
+      <TraceViewer
+        ariaLabel="Read-only review"
+        layers={[{ id: 'signal', label: 'Signal', source: contextSource('review-gate') }]}
+        onBadChannelIntent={onBadChannelIntent}
+        renderer="svg"
+      />,
+    )
+
+    await screen.findByRole('img', { name: 'Read-only review' })
+    expect(screen.queryByRole('button', { name: 'Request to mark Fp1 as bad' })).not.toBeInTheDocument()
+
+    rerender(
+      <TraceViewer
+        ariaLabel="Intent-enabled review"
+        layers={[{ id: 'signal', label: 'Signal', source: contextSource('review-enabled') }]}
+        onBadChannelIntent={onBadChannelIntent}
+        readOnly={false}
+        renderer="svg"
+      />,
+    )
+    const intent = await screen.findByRole('button', { name: 'Request to mark Fp1 as bad' })
+    fireEvent.click(intent)
+    expect(onBadChannelIntent).toHaveBeenCalledWith('Fp1', true)
+    expect(screen.getByRole('button', { name: 'Fp1, EEG, µV' })).not.toHaveAccessibleName(/bad channel/)
+    expect(screen.getByText(/Waiting for the data owner to confirm/)).toBeInTheDocument()
+
+    rerender(
+      <TraceViewer
+        ariaLabel="Capability-disabled review"
+        layers={[{ id: 'signal', label: 'Signal', source: contextSource('capability-disabled', false) }]}
+        onBadChannelIntent={onBadChannelIntent}
+        readOnly={false}
+        renderer="svg"
+      />,
+    )
+    await screen.findByRole('img', { name: 'Capability-disabled review' })
+    expect(screen.queryByRole('button', { name: 'Request to mark Fp1 as bad' })).not.toBeInTheDocument()
+    expect(screen.getByText('READ ONLY')).toBeVisible()
+  })
+
+  it('supports an explicit included-channel set independently from channel selection', async () => {
+    render(
+      <TraceViewer
+        ariaLabel="Picked channels"
+        includedChannelIds={['C3']}
+        layers={[{ id: 'signal', label: 'Signal', source: source('picked') }]}
+        renderer="svg"
+      />,
+    )
+
+    expect(await screen.findByRole('button', { name: 'C3, EEG, µV' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Fp1, EEG, µV' })).not.toBeInTheDocument()
+    expect(screen.getByText('1–1 / 1', { exact: true })).toBeVisible()
   })
 })
