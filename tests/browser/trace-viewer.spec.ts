@@ -34,7 +34,7 @@ test('maps a pointer drag to a bounded time selection', async ({ page }) => {
   await expect(page.getByText(/Selection 1\.000–3\.000 s · 2\.000 s/)).toBeVisible()
 })
 
-test('jumps through context markers and emits review intent without changing metadata', async ({ page }) => {
+test('jumps through context markers and saves bad-channel changes locally', async ({ page }) => {
   await page.goto('/')
   const eventMarker = page.getByRole('button', { name: /Jump to event Planted blink peak/ })
   await expect(eventMarker).toBeVisible()
@@ -43,11 +43,11 @@ test('jumps through context markers and emits review intent without changing met
   await expect(page.getByRole('slider', { name: 'Time position' })).toHaveValue('3.25')
   await expect(page.getByRole('button', { name: /Jump to BAD: Movement contamination/ })).toBeVisible()
 
-  const intent = page.getByRole('button', { name: 'Request to mark Fp1 as bad' })
+  const intent = page.getByRole('button', { name: 'Mark Fp1 as bad' })
   await intent.click()
-  await expect(page.getByText('Requested bad status for Fp1; source metadata is unchanged.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Fp1, EEG, µV' })).toBeVisible()
-  await expect(intent).toHaveAccessibleName('Request to mark Fp1 as bad')
+  await expect(page.getByText('Fp1 marked bad.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Fp1, EEG, µV, bad channel' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Restore Fp1 as good' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Show event overlays' }).click()
   await expect(eventMarker).toHaveCount(0)

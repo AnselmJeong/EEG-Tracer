@@ -1,0 +1,103 @@
+import { expect, test } from '@playwright/test'
+
+test('right-click a label to rename, a shaded interval to delete, and overlapping intervals to choose', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: /Jump to ANN: Calibration settled/ }).click({ button: 'right' })
+  await expect(page.getByRole('dialog', { name: 'Edit annotation' })).toBeVisible()
+  await expect(page.getByLabel('Annotation label', { exact: true })).toHaveValue('Calibration settled')
+  await expect(page.getByLabel('Annotation', { exact: true })).toHaveCount(0)
+  await page.getByLabel('Annotation label', { exact: true }).fill('Renamed directly')
+  await page.getByLabel('Annotation label', { exact: true }).press('Enter')
+  await expect(page.getByRole('button', { name: /Jump to ANN: Renamed directly/ })).toBeVisible()
+  const surface = page.getByTestId('trace-interaction-surface')
+  await surface.click({ button: 'right', position: { x: 20, y: 50 } })
+  await expect(page.getByLabel('Annotation label', { exact: true })).toHaveValue('Renamed directly')
+  await page.getByRole('button', { name: 'Delete annotation' }).click()
+  await page.reload()
+  await expect(page.getByRole('button', { name: /Jump to annotation Renamed directly/ })).toHaveCount(0)
+
+  await page.getByRole('button', { name: /Jump to event Planted blink peak/ }).focus()
+  await page.keyboard.press('Enter')
+  await surface.click({ button: 'right' })
+  await expect(page.getByLabel('Annotation', { exact: true })).toHaveValue('')
+  await expect(page.getByRole('button', { name: 'Delete annotation' })).toHaveCount(0)
+  await page.getByLabel('Annotation', { exact: true }).selectOption('movement')
+  await expect(page.getByLabel('Annotation label', { exact: true })).toHaveValue('Movement contamination')
+  await page.getByRole('button', { name: 'Delete annotation' }).click()
+  await page.reload()
+  await expect(page.getByRole('button', { name: /Jump to bad segment Movement contamination/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Jump to annotation Planted blink window/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Jump to event Planted blink peak/ })).toBeVisible()
+})
+
+test('reusing a category creates a new interval and preserves the original after reload', async ({ page }) => {
+  await page.goto('/')
+  const surface = page.getByTestId('trace-interaction-surface')
+  for (const category of ['Calibration settled', 'Movement contamination']) {
+    const bounds = await surface.boundingBox()
+    if (!bounds) throw new Error('Trace surface is missing')
+    await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + 60)
+    await page.mouse.down()
+    await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + 60)
+    await page.mouse.up()
+    await surface.click({ button: 'right' })
+    await page.getByLabel('Category', { exact: true }).selectOption({ label: category })
+    await expect(page.getByRole('dialog', { name: 'Add annotation', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Add annotation', exact: true }).click()
+    await expect(page.getByText('Annotation added.', { exact: true })).toBeVisible()
+    await page.reload()
+  }
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('trace-viewer-playground-review-v1') ?? '{}') as {
+    annotations: Array<{ id: string; label: string; startTimeS: number; durationS: number; kind: string }>
+  })
+  for (const [id, label, start, duration, kind] of [
+    ['calibration', 'Calibration settled', 0, 0.55, 'annotation'],
+    ['movement', 'Movement contamination', 5.15, 0.22, 'bad-segment'],
+  ] as const) {
+    const matching = saved.annotations.filter((annotation) => annotation.label === label)
+    expect(matching).toHaveLength(2)
+    expect(matching.find((annotation) => annotation.id === id)).toMatchObject({ startTimeS: start, durationS: duration, kind })
+    expect(matching.find((annotation) => annotation.id !== id)).toMatchObject({ startTimeS: 1.2, durationS: 0.8, kind })
+  }
+})
+
+test('right-click annotations save locally, preserve the view, and support rename/delete', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Pan forward', exact: true }).click()
+  const position = await page.getByRole('slider', { name: 'Time position', exact: true }).inputValue()
+  const surface = page.getByTestId('trace-interaction-surface')
+  const bounds = await surface.boundingBox()
+  if (!bounds) throw new Error('Trace surface is missing')
+  await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + 40)
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + 40)
+  await page.mouse.up()
+  await surface.click({ button: 'right' })
+  const dialog = page.getByRole('dialog', { name: 'Add annotation', exact: true })
+  await expect(dialog).toBeVisible()
+  await expect(page.getByLabel('Annotation label', { exact: true })).toBeFocused()
+  await page.getByLabel('Annotation label', { exact: true }).fill('Review range')
+  await page.getByLabel('Annotation label', { exact: true }).press('Enter')
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByRole('button', { name: /Jump to ANN: Review range/ })).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Time position', exact: true })).toHaveValue(position)
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: /Jump to annotation Review range/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Annotations…' }).click()
+  await page.getByLabel('Annotation', { exact: true }).selectOption(await page.getByLabel('Annotation', { exact: true }).locator('option').filter({ hasText: 'Review range ·' }).getAttribute('value') ?? '')
+  await page.getByLabel('Annotation label', { exact: true }).fill('Reviewed range')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByRole('button', { name: /Jump to annotation Reviewed range/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Annotations…' }).click()
+  await page.getByLabel('Annotation', { exact: true }).selectOption(await page.getByLabel('Annotation', { exact: true }).locator('option').filter({ hasText: 'Reviewed range ·' }).getAttribute('value') ?? '')
+  await page.getByRole('button', { name: 'Delete annotation' }).click()
+  await page.reload()
+  await expect(page.getByRole('button', { name: /Jump to annotation Reviewed range/ })).toHaveCount(0)
+
+  await surface.click()
+  await surface.click({ button: 'right' })
+  await expect(page.getByRole('dialog', { name: 'Add event' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})

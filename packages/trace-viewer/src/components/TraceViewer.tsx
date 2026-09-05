@@ -16,7 +16,7 @@ import { constraintsFromMetadata } from '../state/invariants'
 import { useTraceViewer } from '../state/useTraceViewer'
 import type { TraceViewerAction, TraceViewerInteractionState } from '../state/trace-viewer-reducer'
 import { AnnotationLane } from './AnnotationLane'
-import { AnnotationReview } from './AnnotationReview'
+import { AnnotationReview, type AnnotationReviewHandle } from './AnnotationReview'
 import { ChannelNavigator } from './ChannelNavigator'
 import { RecordingOverview } from './RecordingOverview'
 import { TraceInteractionStatus } from './TraceInteractionStatus'
@@ -210,6 +210,7 @@ function TraceViewerReady({
   const displayMetadata = displayMetadataLayers[0]
   if (displayMetadata === undefined) throw new Error('Trace metadata is unavailable.')
   const controller = useTraceViewer(displayMetadata, props)
+  const annotationEditor = useRef<AnnotationReviewHandle>(null)
   const { ref: stageRef, size } = useElementSize()
   const [windowState, setWindowState] = useState<WindowState>({ status: 'loading' })
   const cache = useMemo(() => new ViewportCache(), [])
@@ -364,10 +365,40 @@ function TraceViewerReady({
       ) : null}
       {interactive && !readOnly && props.onAnnotationIntent !== undefined
         && metadataLayers.every(({ capabilities }) => capabilities.canEditAnnotations) ? (
-          <AnnotationReview annotations={canonical.annotations} cursor={controller.state.cursor}
+          <AnnotationReview ref={annotationEditor} annotations={canonical.annotations} cursor={controller.state.cursor}
             selection={controller.state.selection} onIntent={props.onAnnotationIntent} announce={setAnnouncement} />
         ) : null}
-      <div aria-busy={windowPending || windowState.status === 'loading'} className="nsv-stage" ref={stageRef}>
+      <div aria-busy={windowPending || windowState.status === 'loading'} className="nsv-stage" ref={stageRef}
+        onContextMenu={(event) => {
+          if (!annotationEditor.current || !(event.target instanceof Element)) return
+          const annotationId = event.target.closest('[data-annotation-id]')?.getAttribute('data-annotation-id')
+          if (annotationId) {
+            event.preventDefault()
+            annotationEditor.current.openExisting([annotationId])
+            return
+          }
+          const surface = event.target.closest('.nsv-interaction-overlay')
+          if (!surface) return
+          const bounds = surface.getBoundingClientRect()
+          if (bounds.width <= 0) return
+          const timeS = renderedViewport.startTimeS + (event.clientX - bounds.left) / bounds.width * renderedViewport.durationS
+          const selected = controller.state.selection
+          const inSelection = selected !== null && timeS >= selected.startTimeS && timeS <= selected.endTimeS
+          if (!inSelection) {
+            const tolerance = 5 / bounds.width * renderedViewport.durationS
+            const hits = overviewAnnotations.filter((annotation) => annotation.durationS === 0
+              ? Math.abs(annotation.startTimeS - timeS) <= tolerance
+              : timeS >= annotation.startTimeS && timeS <= annotation.startTimeS + annotation.durationS)
+            if (hits.length > 0) {
+              event.preventDefault()
+              annotationEditor.current.openExisting(hits.map(({ id }) => id))
+              return
+            }
+          }
+          if (!controller.state.selection && !controller.state.cursor) return
+          event.preventDefault()
+          annotationEditor.current.openNew()
+        }}>
         {windowPending ? <span className="nsv-sr-only" role="status">Loading requested viewport; showing previous window.</span> : null}
         {windowState.status === 'loading' ? <TraceStatus kind="loading" message="Loading signal viewport…" /> : null}
         {windowState.status === 'error' ? <TraceStatus kind="error" message={windowState.message} /> : null}

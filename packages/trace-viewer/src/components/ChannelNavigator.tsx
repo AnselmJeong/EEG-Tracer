@@ -40,14 +40,14 @@ export function ChannelNavigator({ announce, canMarkBadChannels, dispatch, model
             </button>
             {canMarkBadChannels && onBadChannelIntent !== undefined ? (
               <button
-                aria-label={`Request to ${channel.bad ? 'restore' : 'mark'} ${channel.label} ${channel.bad ? 'as good' : 'as bad'}`}
+                aria-label={`${channel.bad ? 'Restore' : 'Mark'} ${channel.label} ${channel.bad ? 'as good' : 'as bad'}`}
                 aria-pressed={channel.bad}
                 className="nsv-bad-channel-intent"
                 onClick={() => {
                   onBadChannelIntent(channel.id, !channel.bad)
-                  announce(`Requested ${channel.label} to be marked ${channel.bad ? 'good' : 'bad'}. Waiting for the data owner to confirm.`)
+                  announce(`${channel.label}: ${channel.bad ? 'restore good status' : 'mark as bad'}.`)
                 }}
-                title={channel.bad ? 'Request restore' : 'Request bad-channel mark'}
+                title={channel.bad ? 'Restore good status' : 'Mark as bad'}
                 type="button"
               >
                 {channel.bad ? '✓' : '!'}

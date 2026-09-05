@@ -151,3 +151,17 @@ npm run check:pack
 ```
 
 Run the playground with `npm run dev --workspace @neurosignal/trace-viewer-playground`.
+
+In the ICA playground, drag a range and right-click to open the annotation editor.
+Enter a label and press Enter to add it immediately. For a point event, clear the
+selection with Escape, click the trace, and right-click. Choose an existing **Category**
+to reuse its label on the new selection; this always adds a separate annotation.
+Bad-segment categories retain their bad-segment type when applied to a range.
+The **Annotations…** button opens existing annotations for rename/delete, with times
+shown to distinguish annotations that share a label.
+You can also right-click an annotation label or its shaded interval to edit or
+delete it directly. Overlapping intervals offer a choice of annotations at that
+position. Right-clicking a newly selected range still adds a new annotation.
+Annotation and bad-channel
+changes are saved in this browser's local storage; they survive reloads on the same
+origin. The long-recording preview remains read-only. No server or approval is involved.

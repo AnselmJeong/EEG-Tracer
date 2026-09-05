@@ -97,7 +97,7 @@ export function TraceToolbar({
         <div className="nsv-scale-readout">
           <span>{layers.length > 1 ? 'LOCKED SCALE' : 'VISIBLE RANGE'}</span>
           <strong>{scales.join(' · ') || 'No finite values'}</strong>
-          <small>{intentEnabled ? 'REVIEW INTENT' : 'READ ONLY'}</small>
+          <small>{intentEnabled ? 'EDITABLE' : 'READ ONLY'}</small>
         </div>
       </div>
       {interactive ? (

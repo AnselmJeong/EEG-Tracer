@@ -461,3 +461,9 @@ button.nsv-annotation-chip { cursor: pointer; }
 .nsv-annotation-review select,
 .nsv-annotation-review button { font: inherit; color: var(--nsv-text); background: var(--nsv-field); border: 1px solid var(--nsv-line); padding: 6px 8px; max-width: 100%; }
 .nsv-annotation-review button:disabled { opacity: .5; }
+.nsv-annotation-review > span { margin-left: 12px; color: var(--nsv-muted); }
+.nsv-annotation-dialog { color: var(--nsv-text); background: var(--nsv-surface); border: 1px solid var(--nsv-line-strong); border-radius: 8px; padding: 24px; width: min(420px, calc(100vw - 48px)); box-sizing: border-box; }
+.nsv-annotation-dialog::backdrop { background: rgb(20 30 25 / 30%); }
+.nsv-annotation-dialog h2 { margin: 0; font-size: 18px; }
+.nsv-annotation-dialog form { display: grid; gap: 12px; }
+.nsv-annotation-dialog p { margin: 0; color: var(--nsv-muted); }

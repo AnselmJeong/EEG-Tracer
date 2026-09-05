@@ -267,7 +267,7 @@ describe('TraceViewer', () => {
     )
 
     await screen.findByRole('img', { name: 'Read-only review' })
-    expect(screen.queryByRole('button', { name: 'Request to mark Fp1 as bad' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark Fp1 as bad' })).not.toBeInTheDocument()
 
     rerender(
       <TraceViewer
@@ -278,11 +278,11 @@ describe('TraceViewer', () => {
         renderer="svg"
       />,
     )
-    const intent = await screen.findByRole('button', { name: 'Request to mark Fp1 as bad' })
+    const intent = await screen.findByRole('button', { name: 'Mark Fp1 as bad' })
     fireEvent.click(intent)
     expect(onBadChannelIntent).toHaveBeenCalledWith('Fp1', true)
     expect(screen.getByRole('button', { name: 'Fp1, EEG, µV' })).not.toHaveAccessibleName(/bad channel/)
-    expect(screen.getByText(/Waiting for the data owner to confirm/)).toBeInTheDocument()
+    expect(screen.getByText('Fp1: mark as bad.')).toBeInTheDocument()
 
     rerender(
       <TraceViewer
@@ -294,7 +294,7 @@ describe('TraceViewer', () => {
       />,
     )
     await screen.findByRole('img', { name: 'Capability-disabled review' })
-    expect(screen.queryByRole('button', { name: 'Request to mark Fp1 as bad' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark Fp1 as bad' })).not.toBeInTheDocument()
     expect(screen.getByText('READ ONLY')).toBeVisible()
   })
 
