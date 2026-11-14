@@ -38,16 +38,25 @@ export function drawSeries(
       drawing = true
     }
   } else {
+    // Join consecutive buckets into one polyline. Isolated per-bucket strokes vanish wherever a
+    // bucket's minimum and maximum coincide, and leave gaps between neighbouring buckets.
+    let drawing = false
     const count = Math.min(series.bucketStartTimesS.length, series.minimum.length, series.maximum.length)
     for (let index = 0; index < count; index += 1) {
       const timeS = series.bucketStartTimesS[index]
       const minimum = series.minimum[index]
       const maximum = series.maximum[index]
       if (timeS === undefined || minimum === undefined || maximum === undefined
-        || !Number.isFinite(timeS) || !Number.isFinite(minimum) || !Number.isFinite(maximum)) continue
+        || !Number.isFinite(timeS) || !Number.isFinite(minimum) || !Number.isFinite(maximum)) {
+        drawing = false
+        continue
+      }
       const x = timeToX(timeS, model)
-      context.moveTo(x, valueToY(minimum, channel, channelIndex, model))
+      const minimumY = valueToY(minimum, channel, channelIndex, model)
+      if (drawing) context.lineTo(x, minimumY)
+      else context.moveTo(x, minimumY)
       context.lineTo(x, valueToY(maximum, channel, channelIndex, model))
+      drawing = true
     }
   }
   context.stroke()

@@ -35,16 +35,22 @@ function envelopePath(series: Extract<TraceSeries, { representation: 'min-max' }
   const channel = model.channels[channelIndex]
   if (channel === undefined || channel.id !== channelId) return ''
   let path = ''
+  // Join consecutive buckets so flat buckets and bucket boundaries do not leave gaps.
+  let drawing = false
   const count = Math.min(series.bucketStartTimesS.length, series.minimum.length, series.maximum.length)
   for (let index = 0; index < count; index += 1) {
     const timeS = series.bucketStartTimesS[index]
     const minimum = series.minimum[index]
     const maximum = series.maximum[index]
     if (timeS === undefined || minimum === undefined || maximum === undefined
-      || !Number.isFinite(timeS) || !Number.isFinite(minimum) || !Number.isFinite(maximum)) continue
+      || !Number.isFinite(timeS) || !Number.isFinite(minimum) || !Number.isFinite(maximum)) {
+      drawing = false
+      continue
+    }
     const x = timeToX(timeS, model).toFixed(2)
-    path += `M${x},${valueToY(minimum, channel, channelIndex, model).toFixed(2)}`
+    path += `${drawing ? 'L' : 'M'}${x},${valueToY(minimum, channel, channelIndex, model).toFixed(2)}`
       + `L${x},${valueToY(maximum, channel, channelIndex, model).toFixed(2)}`
+    drawing = true
   }
   return path
 }

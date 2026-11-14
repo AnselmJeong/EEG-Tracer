@@ -5,7 +5,7 @@ The sibling `Neurosignal-Testbed` contains `real_data/trace.py`, `RealDataTraceS
 ready. Import evidence remains available in a disclosure above the trace; QC and report controls
 remain available. The original simulation ICA viewer is unchanged.
 
-The web app installs `apps/web/vendor/neurosignal-trace-viewer-0.4.0.tgz`; this artifact is portable
+The web app installs `apps/web/vendor/neurosignal-trace-viewer-0.4.1.tgz`; this artifact is portable
 with the Testbed checkout. No symlink, absolute dependency path, or workspace source import is used.
 Build the package before creating/replacing this tarball, then install it in Testbed's web directory.
 

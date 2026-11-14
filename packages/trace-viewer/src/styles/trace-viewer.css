@@ -144,7 +144,26 @@
   position: relative;
 }
 
-.nsv-stage { overflow: hidden; }
+.nsv-stage {
+  min-height: 220px;
+  overflow: hidden;
+}
+
+/*
+ * The plot is sized from the measured stage, so it must never contribute to the stage's own
+ * height. Left in normal flow, a host that lets the viewer grow with its content would feed
+ * each measurement back into the next one and the plot would grow without bound.
+ */
+.nsv-stage > .nsv-canvas-shell,
+.nsv-stage > .nsv-svg-plot {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.nsv-stage > .nsv-canvas-shell {
+  width: 100%;
+}
 
 .nsv-plot {
   display: block;
