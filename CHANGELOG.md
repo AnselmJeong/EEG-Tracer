@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 — 2026-11-14
+
+- Fixed runaway plot growth in content-sized hosts: the Canvas/SVG plot is now positioned out of
+  flow, so the measured stage height can no longer feed back into itself. The stage keeps a 220 px
+  minimum height.
+- Envelope (min–max) traces are drawn as one connected polyline instead of isolated per-bucket
+  strokes, which left gaps and dropped flat buckets entirely.
+
 ## 0.4.0 — 2026-09-05
 
 - Completed Phase 4 cancellable viewport coordination, 64 MiB/24-entry LRU, idle adjacent prefetch,

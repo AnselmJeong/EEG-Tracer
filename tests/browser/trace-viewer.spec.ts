@@ -58,3 +58,32 @@ test('jumps through context markers and saves bad-channel changes locally', asyn
   await expect(page.getByRole('slider', { name: 'Time position' })).toHaveValue('8')
   await expect(overview).toBeFocused()
 })
+
+test('keeps a stable plot height inside a content-sized host', async ({ page }) => {
+  await page.goto('/')
+  const stage = page.locator('.nsv-stage')
+  await expect(page.getByRole('img', { name: 'Eight-channel EEG before and after ICA repair' })).toBeVisible()
+
+  // A grid item that holds a heading above the viewer resolves the viewer's `height: 100%`
+  // against its own content-driven height. The plot must not feed that back into its size.
+  await page.evaluate(() => {
+    const frame = document.querySelector<HTMLElement>('.viewer-frame')
+    const host = frame?.parentElement
+    if (frame === null || frame === undefined || host === null || host === undefined) throw new Error('Playground frame is missing.')
+    host.style.display = 'grid'
+    host.style.alignContent = 'start'
+    frame.style.minHeight = '0'
+    const heading = document.createElement('div')
+    heading.style.height = '38px'
+    frame.prepend(heading)
+  })
+
+  const heights: number[] = []
+  for (let sample = 0; sample < 4; sample += 1) {
+    await page.waitForTimeout(250)
+    heights.push((await stage.boundingBox())?.height ?? 0)
+  }
+  expect(heights[0]).toBeGreaterThanOrEqual(220)
+  expect(heights[0]).toBeLessThan(600)
+  expect(new Set(heights).size).toBe(1)
+})
