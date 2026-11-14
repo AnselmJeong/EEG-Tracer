@@ -63,6 +63,37 @@ function useElementSize() {
   return { ref, size }
 }
 
+/**
+ * Returns the previous value while `equal` holds. Hosts routinely rebuild `layers` and
+ * `includedChannelIds` on every render; treating those as new would reload the source and reset
+ * the viewport each time the host re-renders.
+ */
+function useStable<T>(value: T, equal: (previous: T, next: T) => boolean): T {
+  const [stable, setStable] = useState(value)
+  if (stable === value || equal(stable, value)) return stable
+  setStable(value)
+  return value
+}
+
+function sameChannelIds(previous: readonly string[] | undefined, next: readonly string[] | undefined): boolean {
+  if (previous === undefined || next === undefined) return previous === next
+  return previous.length === next.length && previous.every((id, index) => id === next[index])
+}
+
+function sameLayers(previous: readonly TraceLayer[], next: readonly TraceLayer[]): boolean {
+  return previous.length === next.length && previous.every((layer, index) => {
+    const other = next[index]
+    return other !== undefined && layer.id === other.id && layer.source === other.source
+      && layer.label === other.label && layer.color === other.color && layer.lineStyle === other.lineStyle
+  })
+}
+
+function sameLayerSources(previous: readonly TraceLayer[], next: readonly TraceLayer[]): boolean {
+  return previous.length === next.length && previous.every((layer, index) => (
+    layer.id === next[index]?.id && layer.source === next[index]?.source
+  ))
+}
+
 function validateMetadata(metadata: readonly TraceMetadata[]): void {
   const canonical = metadata[0]
   if (canonical === undefined) throw new Error('At least one visible trace layer is required.')
@@ -188,11 +219,14 @@ function TraceStage({
 function TraceViewerReady({
   interactive,
   metadataLayers,
+  presentationLayers,
   visibleLayers,
   ...props
 }: TraceViewerProps & {
   interactive: boolean
   metadataLayers: readonly TraceMetadata[]
+  /** Same layers as `visibleLayers`, with their current label, color and line style. */
+  presentationLayers: readonly TraceLayer[]
   visibleLayers: readonly TraceLayer[]
 }) {
   const canonical = metadataLayers[0]
@@ -327,14 +361,15 @@ function TraceViewerReady({
     visibleAnnotationKinds,
   ), [displayMetadata.annotations, visibleAnnotationKinds])
   const displayWindowLayers = useMemo(() => windowState.status === 'ready'
-    ? windowState.layers.map((loaded) => ({
+    ? windowState.layers.map((loaded, index) => ({
       ...loaded,
+      layer: presentationLayers[index]?.id === loaded.layer.id ? presentationLayers[index] : loaded.layer,
       window: {
         ...loaded.window,
         annotations: visibleAnnotations(loaded.window.annotations, visibleAnnotationKinds),
       },
     }))
-    : [], [visibleAnnotationKinds, windowState])
+    : [], [presentationLayers, visibleAnnotationKinds, windowState])
   const jumpAnnotation = (direction: 'next' | 'previous'): void => {
     const referenceTimeS = controller.state.cursor?.timeS
       ?? (direction === 'next'
@@ -434,8 +469,14 @@ function TraceViewerReady({
 export function TraceViewer(props: TraceViewerProps) {
   const { ariaLabel, className, layers } = props
   const interactive = props.interactive ?? true
-  const visibleLayers = useMemo(() => layers.filter(({ visible }) => visible !== false), [layers])
-  const includedChannelKey = props.includedChannelIds?.join('\u0000') ?? ''
+  const presentationLayers = useStable(
+    useMemo(() => layers.filter(({ visible }) => visible !== false), [layers]),
+    sameLayers,
+  )
+  // Only a change of source reloads data; label, color and line style are presentation.
+  const visibleLayers = useStable(presentationLayers, sameLayerSources)
+  const includedChannelIds = useStable(props.includedChannelIds, sameChannelIds)
+  const includedChannelKey = includedChannelIds?.join('\u0000') ?? ''
   const [metadataState, setMetadataState] = useState<MetadataState>({ status: 'loading' })
 
   useEffect(() => {
@@ -449,8 +490,8 @@ export function TraceViewer(props: TraceViewerProps) {
         if (visibleLayers.length === 0) throw new Error('At least one visible trace layer is required.')
         const metadata = await Promise.all(visibleLayers.map(({ source }) => source.getMetadata(controller.signal)))
         validateMetadata(metadata)
-        if (props.includedChannelIds !== undefined) {
-          const included = new Set(props.includedChannelIds)
+        if (includedChannelIds !== undefined) {
+          const included = new Set(includedChannelIds)
           if (!metadata[0]?.channels.some(({ id }) => included.has(id))) {
             throw new Error('includedChannelIds must contain at least one channel from the trace source.')
           }
@@ -468,7 +509,7 @@ export function TraceViewer(props: TraceViewerProps) {
       current = false
       controller.abort()
     }
-  }, [ariaLabel, includedChannelKey, props.includedChannelIds, visibleLayers])
+  }, [ariaLabel, includedChannelIds, visibleLayers])
 
   const rootClassName = ['nsv-viewer', interactive ? 'is-interactive' : 'is-static', className].filter(Boolean).join(' ')
   return (
@@ -478,9 +519,11 @@ export function TraceViewer(props: TraceViewerProps) {
       {metadataState.status === 'ready' ? (
         <TraceViewerReady
           {...props}
+          {...(includedChannelIds === undefined ? {} : { includedChannelIds })}
           interactive={interactive}
           key={`${metadataState.metadata.map(({ sourceId, revision }) => `${sourceId}:${revision}`).join('|')}|${includedChannelKey}`}
           metadataLayers={metadataState.metadata}
+          presentationLayers={presentationLayers}
           visibleLayers={visibleLayers}
         />
       ) : null}

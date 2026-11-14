@@ -1,5 +1,5 @@
-import { useRef } from 'react'
-import type { CSSProperties, PointerEvent, WheelEvent } from 'react'
+import { useEffect, useRef } from 'react'
+import type { CSSProperties, PointerEvent } from 'react'
 
 import type { TraceCursor, TraceSelection } from '../model/selection'
 import type { TraceRenderModel } from '../renderers/TraceRenderer'
@@ -22,6 +22,9 @@ interface PointerGesture {
   startClientX: number
   type: 'pan' | 'select'
 }
+
+const WHEEL_LINE_PX = 16
+const WHEEL_CHANNEL_STEP_PX = 100
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
@@ -126,22 +129,54 @@ export function TraceInteractionOverlay({ announce, constraints, describedById, 
     }
   }
 
-  const handleWheel = (event: WheelEvent<HTMLDivElement>): void => {
+  // React registers `wheel` as a passive listener, where preventDefault() is ignored and the host
+  // page scrolls underneath the viewer. Listen natively, and only claim wheels the viewer acts on.
+  const surfaceRef = useRef<HTMLDivElement>(null)
+  const channelWheelRef = useRef(0)
+  const wheelHandlerRef = useRef<(event: WheelEvent) => void>(() => undefined)
+  wheelHandlerRef.current = (event: WheelEvent): void => {
+    const surface = surfaceRef.current
+    if (surface === null) return
     if (event.altKey) {
-      const bounds = event.currentTarget.getBoundingClientRect()
       dispatch({
         type: 'zoom-time',
         factor: Math.exp(event.deltaY * 0.002),
-        anchorTimeS: timeAtClientX(event.clientX, bounds, model),
+        anchorTimeS: timeAtClientX(event.clientX, surface.getBoundingClientRect(), model),
       })
     } else if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-      const delta = event.shiftKey ? event.deltaY : event.deltaX
-      dispatch({ type: 'pan-time', deltaTimeS: (delta / Math.max(1, event.currentTarget.clientWidth)) * model.viewport.durationS })
+      const delta = event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
+      dispatch({ type: 'pan-time', deltaTimeS: (delta / Math.max(1, surface.clientWidth)) * model.viewport.durationS })
     } else {
-      dispatch({ type: 'shift-channel-offset', delta: Math.sign(event.deltaY) })
+      const direction = Math.sign(event.deltaY)
+      const { channelOffset, visibleChannelCount } = state.viewport
+      const canShift = direction < 0
+        ? channelOffset > 0
+        : direction > 0 && channelOffset + visibleChannelCount < constraints.channelIds.length
+      // At the first or last channel the host keeps the wheel, so the page can scroll past the viewer.
+      if (!canShift) {
+        channelWheelRef.current = 0
+        return
+      }
+      // Trackpads emit many small deltas; move one channel per notch-sized amount of travel.
+      const pixels = event.deltaMode === 1 ? event.deltaY * WHEEL_LINE_PX : event.deltaY
+      if (Math.sign(channelWheelRef.current) !== direction) channelWheelRef.current = 0
+      channelWheelRef.current += pixels
+      const steps = Math.trunc(channelWheelRef.current / WHEEL_CHANNEL_STEP_PX)
+      if (steps !== 0) {
+        channelWheelRef.current -= steps * WHEEL_CHANNEL_STEP_PX
+        dispatch({ type: 'shift-channel-offset', delta: steps })
+      }
     }
     event.preventDefault()
   }
+
+  useEffect(() => {
+    const surface = surfaceRef.current
+    if (surface === null) return
+    const listener = (event: WheelEvent): void => wheelHandlerRef.current(event)
+    surface.addEventListener('wheel', listener, { passive: false })
+    return () => surface.removeEventListener('wheel', listener)
+  }, [])
 
   return (
     <div
@@ -166,7 +201,7 @@ export function TraceInteractionOverlay({ announce, constraints, describedById, 
       }}
       onPointerMove={handlePointerMove}
       onPointerUp={finishGesture}
-      onWheel={handleWheel}
+      ref={surfaceRef}
       role="application"
       style={{
         height: model.geometry.height,

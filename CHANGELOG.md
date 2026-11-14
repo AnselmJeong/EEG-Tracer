@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.2 — 2026-11-14
+
+- Wheel input is handled by a native non-passive listener. React's passive `wheel` listener
+  ignored `preventDefault()`, so the host page scrolled underneath the viewer while channels
+  shifted. At the first or last channel the host now keeps the wheel so the page can scroll past.
+  Channel paging follows accumulated wheel travel (one channel per 100 px) instead of one channel
+  per event, which made trackpads race through the list.
+- `layers` and `includedChannelIds` are compared by content. A host that rebuilds equal arrays on
+  each render no longer reloads metadata and resets the viewport, and a label, color or line-style
+  change updates in place.
+
 ## 0.4.1 — 2026-11-14
 
 - Fixed runaway plot growth in content-sized hosts: the Canvas/SVG plot is now positioned out of

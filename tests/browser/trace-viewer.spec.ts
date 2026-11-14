@@ -87,3 +87,29 @@ test('keeps a stable plot height inside a content-sized host', async ({ page }) 
   expect(heights[0]).toBeLessThan(600)
   expect(new Set(heights).size).toBe(1)
 })
+
+test('wheel pages channels without scrolling the host, and releases the wheel at the channel boundary', async ({ page }) => {
+  const consoleErrors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
+  await page.setViewportSize({ width: 1280, height: 500 })
+  await page.goto('/')
+  const surface = page.getByRole('application', { name: 'Interactive trace viewport' })
+  await expect(surface).toBeVisible()
+  await surface.scrollIntoViewIfNeeded()
+  const bounds = await surface.boundingBox()
+  if (bounds === null) throw new Error('Interactive surface has no bounds.')
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  const scrollY = () => page.evaluate(() => window.scrollY)
+
+  const before = await scrollY()
+  await page.mouse.wheel(0, 100)
+  await expect(page.getByText('2–6 / 8', { exact: true })).toBeVisible()
+  expect(await scrollY()).toBe(before)
+
+  // Already at the first channel after scrolling back: the host page takes the wheel.
+  await page.mouse.wheel(0, -100)
+  await expect(page.getByText('1–5 / 8', { exact: true })).toBeVisible()
+  await page.mouse.wheel(0, -100)
+  await expect.poll(scrollY).toBeLessThan(before)
+  expect(consoleErrors.filter((text) => text.includes('preventDefault'))).toEqual([])
+})
