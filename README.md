@@ -16,7 +16,7 @@ npm run build
 npm pack --workspace @neurosignal/trace-viewer
 ```
 
-Then install the emitted `neurosignal-trace-viewer-0.4.1.tgz` in a React consumer.
+Then install the emitted `neurosignal-trace-viewer-0.4.2.tgz` in a React consumer.
 
 ## NeuroSignal simulation adapter
 

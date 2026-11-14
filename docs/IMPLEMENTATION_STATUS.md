@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-09-05 · package 0.4.1
+Updated: 2026-09-05 · package 0.4.2
 
 ## Complete
 
@@ -51,6 +51,6 @@ See [REAL_DATA_INTEGRATION.md](REAL_DATA_INTEGRATION.md) for transport limits, t
   SHA-256 preservation through browser navigation
 - Both TypeScript builds, package lint, Python changed-file Ruff checks, package dry-run,
   isolated React 19 tarball consumer build, and both repositories' `git diff --check`
-- Testbed uses the portable 0.4.1 tarball with a single deduplicated React runtime
+- Testbed uses the portable 0.4.2 tarball with a single deduplicated React runtime
 
 No registry publication or remote push was performed. Changes are present in both local worktrees.

@@ -313,3 +313,30 @@ describe('TraceViewer', () => {
     expect(screen.getByText('1–1 / 1', { exact: true })).toBeVisible()
   })
 })
+
+describe('TraceViewer host re-renders', () => {
+  it('keeps the loaded viewer when a host re-creates equal layers and included channels', async () => {
+    const original = contextSource('stable')
+    const getMetadata = vi.fn((signal?: AbortSignal) => original.getMetadata(signal))
+    const source = { ...original, getMetadata }
+    const view = (label: string) => (
+      <TraceViewer ariaLabel="Stable EEG" defaultViewport={{ durationS: 2 }} includedChannelIds={['Fp1', 'Fp2']}
+        layers={[{ id: 'stable', label, source }]} renderer="svg" />
+    )
+    const { rerender } = render(view('Source'))
+    await screen.findByRole('img', { name: 'Stable EEG' })
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in in time' }))
+    await waitFor(() => expect(screen.getByText('1.00 s', { exact: true })).toBeInTheDocument())
+
+    rerender(view('Source'))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)))
+    expect(getMetadata).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('1.00 s', { exact: true })).toBeInTheDocument()
+
+    // A presentation-only change must not reload the source or reset the viewport either.
+    rerender(view('Renamed'))
+    await waitFor(() => expect(screen.getByText('Renamed')).toBeInTheDocument())
+    expect(getMetadata).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('1.00 s', { exact: true })).toBeInTheDocument()
+  })
+})
